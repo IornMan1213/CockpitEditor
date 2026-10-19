@@ -1,0 +1,31 @@
+{
+  "smt": {
+    "name": "MiG-29SMT",
+    "repo": "C:\\Users\\jayea\\Documents\\CockpitEditor\\worktrees\\smt",
+    "work": "C:\\Users\\jayea\\Documents\\CockpitEditor\\work\\smt",
+    "real_source": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29SMTSource",
+    "project": "H:\\Blueprinter-Editor\\Blueprinter-Editor",
+    "build_out": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29SMTBuild",
+    "plugin_dir": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Nuclear Option\\BepInEx\\plugins\\MiG-29SMT",
+    "instruments_dll": "MiG29SMTInstruments.dll",
+    "test_build": "smt",
+    "pages": ["pfd", "eng", "sms", "stby", "ufc", "tac"],
+    "builtin_screens": ["pfd", "eng", "sms", "stby", "ufc"]
+  },
+  "mig29": {
+    "name": "MiG-29 (9.12)",
+    "repo": "C:\\Users\\jayea\\Documents\\CockpitEditor\\worktrees\\mig29",
+    "work": "C:\\Users\\jayea\\Documents\\CockpitEditor\\work\\mig29",
+    "real_source": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29Source",
+    "project": "H:\\Blueprinter-Editor\\Blueprinter-Editor",
+    "build_out": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29Build",
+    "plugin_dir": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Nuclear Option\\BepInEx\\plugins\\MiG-29_Fulcrum",
+    "instruments_dll": "MiG29Instruments.dll",
+    "test_build": "mig",
+    "pages": ["tac"],
+    "builtin_screens": []
+  },
+  "_test_build_script": "C:\\Users\\jayea\\Documents\\MiG29-NuclearOption\\tools\\save_test_build.ps1",
+  "_build_enabled": false,
+  "_build_disabled_reason": "Building is switched off until the cockpit editor work is merged into the mods (after the 0.9.2 / 0.2.0 release). Your layout is saved and will go into the first build after that."
+}
