@@ -76,6 +76,13 @@
   .shapes button { padding: 3px; font-size: 11px; }
   .warn { color: var(--accent); font-size: 12px; }
   .grouphead { font-size: 11px; color: var(--dim); margin: 10px 0 4px; }
+  .modal { position: absolute; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; z-index: 20; }
+  .mcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(1280px, 96vw); height: min(820px, 94vh); display: flex; flex-direction: column; }
+  .mhead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .mbody { flex: 1; display: flex; min-height: 0; }
+  .mbody canvas { flex: 1; min-width: 0; background: #0b0e11; outline: none; cursor: crosshair; touch-action: none; }
+  .mside { width: 290px; padding: 12px; overflow-y: auto; border-left: 1px solid var(--line); }
+  .shapePreview { width: 100%; height: 150px; background: #0d1013; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; display: block; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -144,6 +151,31 @@
     <button id="installOnly" title="Copy the last build into the game without building">Install last build</button><button id="logclose">Close</button></div>
   <pre id="log"></pre>
 </div>
+
+<div id="outlineModal" class="modal"><div class="mcard">
+  <div class="mhead"><strong>Screen outline</strong><span class="hint" id="olInfo" style="margin:0 0 0 12px"></span><span style="flex:1"></span>
+    <button id="olUndo" title="Ctrl+Z">Undo</button><button id="olCancel">Cancel</button><button id="olDone" class="primary">Done</button></div>
+  <div class="mbody">
+    <canvas id="olCanvas" tabindex="0"></canvas>
+    <div class="mside">
+      <h2>Shape</h2>
+      <div class="shapes" id="olPresets"></div>
+      <h2>Selected corner</h2>
+      <div class="row"><label>X</label><input type="number" id="olX" step="0.5"><span class="unit">mm</span></div>
+      <div class="row"><label>Y</label><input type="number" id="olY" step="0.5"><span class="unit">mm</span></div>
+      <div class="grid2"><button id="olAdd" title="A: add a corner after the selected one, halfway along the edge">Add corner</button><button id="olDel" class="danger" title="Del">Delete corner</button></div>
+      <h2>Tools</h2>
+      <div class="row"><label>Grid</label><select id="olGrid"><option value="0">off</option><option value="1">1 mm</option><option value="2">2 mm</option><option value="5" selected>5 mm</option><option value="10">10 mm</option></select></div>
+      <div class="check"><input type="checkbox" id="olSnap" checked><label for="olSnap">Snap corners to the grid</label></div>
+      <div class="check"><input type="checkbox" id="olMirror"><label for="olMirror">Mirror left / right while editing</label></div>
+      <div class="row" style="margin-top:6px"><label>Round radius</label><input type="number" id="olRadius" value="6" min="0.5" step="0.5"><span class="unit">mm</span></div>
+      <div class="grid2" style="margin-top:6px"><button id="olSub" title="A new corner in the middle of every edge">Subdivide edges</button><button id="olSym" title="Copy the left half onto the right">Make symmetric</button>
+        <button id="olFlipH">Flip left-right</button><button id="olFlipV">Flip up-down</button><button id="olRound" title="Round the selected corner (or all) with a few extra corners">Round corner</button><button id="olFit" title="Zoom to the whole outline">Zoom to fit</button></div>
+      <h2>Keys</h2>
+      <p class="hint">Click a corner to select it, drag to move it. Arrows nudge 0.5 mm (Shift 5 mm, Ctrl 0.1 mm). Double-click an edge to add a corner there, Del removes the selected one, A adds one after it. Wheel zooms, right-drag pans. Dents are fine; an outline that crosses itself is shown red and cannot be used.</p>
+    </div>
+  </div>
+</div></div>
 
 <div id="help"><div class="card">
   <h2 style="font-size:16px;color:var(--text);text-transform:none;letter-spacing:0;margin-top:0">How to use the Cockpit Editor</h2>

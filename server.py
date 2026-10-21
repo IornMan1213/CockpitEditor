@@ -109,8 +109,71 @@ def convex_ccw(pts):
     return lo[:-1] + hi[:-1]
 
 
+def _segs_cross(p1, p2, p3, p4):
+    def o(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    d1, d2, d3, d4 = o(p3, p4, p1), o(p3, p4, p2), o(p1, p2, p3), o(p1, p2, p4)
+    return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0) and abs(d1) > 1e-12 and abs(d2) > 1e-12
+
+
+def simple_ccw(pts):
+    """The outline as drawn (dents allowed), counter-clockwise; one that crosses itself falls back to its convex hull."""
+    P = []
+    for x, y in pts:
+        q = (round(float(x), 5), round(float(y), 5))
+        if not P or q != P[-1]:
+            P.append(q)
+    if len(P) > 1 and P[0] == P[-1]:
+        P.pop()
+    if len(P) < 3:
+        return convex_ccw(pts)
+    area = sum(P[i][0] * P[(i + 1) % len(P)][1] - P[(i + 1) % len(P)][0] * P[i][1] for i in range(len(P)))
+    if abs(area) < 1e-9:
+        return convex_ccw(pts)
+    if area < 0:
+        P.reverse()
+    m = len(P)
+    for i in range(m):
+        for j in range(i + 2, m):
+            if i == 0 and j == m - 1:
+                continue
+            if _segs_cross(P[i], P[(i + 1) % m], P[j], P[(j + 1) % m]):
+                return convex_ccw(pts)
+    return P
+
+
+def ear_clip(poly):
+    """Triangles (index triples) of a simple counter-clockwise polygon."""
+    idx = list(range(len(poly)))
+    tris = []
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def inside(p, a, b, c):
+        return cross(a, b, p) >= -1e-12 and cross(b, c, p) >= -1e-12 and cross(c, a, p) >= -1e-12
+
+    guard = 0
+    while len(idx) > 3 and guard < 10000:
+        guard += 1
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = poly[i0], poly[i1], poly[i2]
+            if cross(a, b, c) <= 1e-12:
+                continue
+            if any(inside(poly[j], a, b, c) for j in idx if j not in (i0, i1, i2)):
+                continue
+            tris.append((i0, i1, i2)); idx.pop(k); break
+        else:
+            break
+    if len(idx) == 3:
+        tris.append(tuple(idx))
+    return tris
+
+
 def offset_poly(poly, d):
-    """Convex counter-clockwise polygon moved out by d on every side (corners where the offset edges meet)."""
+    """Counter-clockwise polygon moved out by d on every side (corners where the offset edges meet; a very sharp corner's
+    mitre is held to 3 d so it does not spike)."""
     m = len(poly)
     lines = []
     for i in range(m):
@@ -124,7 +187,11 @@ def offset_poly(poly, d):
         if abs(den) < 1e-9:
             out.append(tuple(p1)); continue
         t = ((p1[0] - p0[0]) * e1[1] - (p1[1] - p0[1]) * e1[0]) / den
-        out.append(tuple(p0 + e0 * t))
+        q = p0 + e0 * t
+        v = np.array(poly[i])
+        if np.linalg.norm(q - v) > 3 * abs(d):
+            q = v + (q - v) / np.linalg.norm(q - v) * 3 * abs(d)
+        out.append(tuple(q))
     return out
 
 
@@ -222,9 +289,11 @@ def export(jet):
         w, h = float(s["w"]), float(s["h"])
         b, dep = float(s.get("bezel", 0.008)), float(s.get("depth", 0.008))
         page = s["page"]
-        # the screen's outline: a convex polygon in -0.5..0.5 across its width and height, counter-clockwise from the front
-        shape = convex_ccw(s.get("shape") or [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]])
+        # the screen's outline in -0.5..0.5 across its width and height, counter-clockwise from the front; any simple polygon
+        # (dents allowed), cut into triangles
+        shape = simple_ccw(s.get("shape") or [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]])
         inner = [(x * w, y * h) for x, y in shape]
+        tris = ear_clip(inner)
         outer = offset_poly(inner, b)
 
         def P3(p, z):
@@ -235,8 +304,8 @@ def export(jet):
             uv = [(0.75 * (x + 0.5), 0.25 + 0.75 * (y + 0.5)) for x, y in shape]
         else:               # the plugin maps its own texture; dark without it
             uv = [black] * len(shape)
-        for k in range(1, len(inner) - 1):
-            scr.tri([P3(inner[0], dep + 0.0006), P3(inner[k], dep + 0.0006), P3(inner[k + 1], dep + 0.0006)], [uv[0], uv[k], uv[k + 1]], n)
+        for a, b_, c in tris:
+            scr.tri([P3(inner[a], dep + 0.0006), P3(inner[b_], dep + 0.0006), P3(inner[c], dep + 0.0006)], [uv[a], uv[b_], uv[c]], n)
         parts.append(scr.part())
         bz = Mesh(f"cbz_{s['id']}", "ck")
         col = dgrey if s.get("bezelColor") == "grey" else black
@@ -244,8 +313,8 @@ def export(jet):
         for i in range(m):                                   # front ring
             j = (i + 1) % m
             bz.quad([P3(outer[i], dep), P3(outer[j], dep), P3(inner[j], dep), P3(inner[i], dep)], [col] * 4, n)
-        for k in range(1, m - 1):                            # backing under the screen
-            bz.tri([P3(inner[0], dep), P3(inner[k], dep), P3(inner[k + 1], dep)], [col] * 3, n)
+        for a, b_, c in tris:                                # backing under the screen
+            bz.tri([P3(inner[a], dep), P3(inner[b_], dep), P3(inner[c], dep)], [col] * 3, n)
         if dep > 0.0005:                                     # sides down into the surface
             for i in range(m):
                 j = (i + 1) % m

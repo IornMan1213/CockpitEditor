@@ -138,6 +138,25 @@ function hull(pts) {
   return lo.slice(0, -1).concat(hi.slice(0, -1));
 }
 function isConvex(pts) { return hull(pts).length === new Set(pts.map((p) => p[0].toFixed(5) + ',' + p[1].toFixed(5))).size; }
+function segsCross(p1, p2, p3, p4) {
+  const o = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = o(p3, p4, p1), d2 = o(p3, p4, p2), d3 = o(p1, p2, p3), d4 = o(p1, p2, p4);
+  return (d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0) && Math.abs(d1) > 1e-12 && Math.abs(d2) > 1e-12;
+}
+function selfCrossing(P) {
+  const m = P.length;
+  for (let i = 0; i < m; i++) for (let j = i + 2; j < m; j++) { if (i === 0 && j === m - 1) continue; if (segsCross(P[i], P[(i + 1) % m], P[j], P[(j + 1) % m])) return true; }
+  return false;
+}
+function signedArea(P) { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; }
+// the outline as drawn (dents allowed), counter-clockwise; one that crosses itself becomes its hull, as the server does
+function simpleCcw(pts) {
+  const P = [];
+  for (const p of pts) { const q = [+p[0].toFixed(5), +p[1].toFixed(5)]; if (!P.length || q[0] !== P[P.length - 1][0] || q[1] !== P[P.length - 1][1]) P.push(q); }
+  if (P.length > 1 && P[0][0] === P[P.length - 1][0] && P[0][1] === P[P.length - 1][1]) P.pop();
+  if (P.length < 3 || Math.abs(signedArea(P)) < 1e-9 || selfCrossing(P)) return hull(pts);
+  return signedArea(P) < 0 ? P.reverse() : P;
+}
 function offsetPoly(poly, d) {
   const m = poly.length, lines = [];
   for (let i = 0; i < m; i++) {
@@ -149,7 +168,10 @@ function offsetPoly(poly, d) {
     const den = e0[0] * e1[1] - e0[1] * e1[0];
     if (Math.abs(den) < 1e-9) return p1;
     const t = ((p1[0] - p0[0]) * e1[1] - (p1[1] - p0[1]) * e1[0]) / den;
-    return [p0[0] + e0[0] * t, p0[1] + e0[1] * t];
+    let q = [p0[0] + e0[0] * t, p0[1] + e0[1] * t];
+    const v = poly[i], L = Math.hypot(q[0] - v[0], q[1] - v[1]);
+    if (L > 3 * Math.abs(d)) q = [v[0] + (q[0] - v[0]) / L * 3 * Math.abs(d), v[1] + (q[1] - v[1]) / L * 3 * Math.abs(d)];   // sharp corner: no spike
+    return q;
   });
 }
 
@@ -251,7 +273,7 @@ async function buildPreview(e) {
     mesh.position.set(0, 0, e.offset ?? 0.0015);
     grp.add(mesh);
   } else {
-    const shape = hull(e.shape || SHAPES.rect.pts);
+    const shape = simpleCcw(e.shape || SHAPES.rect.pts);
     const inner = shape.map(([x, y]) => [x * e.w, y * e.h]);
     const b = e.bezel ?? 0.008, d = Math.max(e.depth ?? 0.008, 0.001);
     const outer = offsetPoly(inner, b);
@@ -426,7 +448,9 @@ function renderProps() {
     h += field('Shows', `<select id="p_page">${jets[jet].pages.map((p) => `<option value="${p}"${p === e.page ? ' selected' : ''}>${PAGE_NAMES[p] || p}</option>`).join('')}</select>`);
     h += '<h2>Outline</h2>';
     h += `<div class="shapes">${Object.entries(SHAPES).map(([k, v]) => `<button data-shape="${k}" title="${v.name}">${v.name}</button>`).join('')}</div>`;
-    h += `<canvas id="shapeCanvas"></canvas><p class="hint">Drag a dot to move a corner &middot; double-click an edge to add one &middot; right-click a dot to remove it.</p><p class="warn" id="shapeWarn"></p>`;
+    h += `<canvas id="shapePreview" class="shapePreview" title="Click to edit the outline"></canvas>
+      <div class="row" style="margin-top:6px"><button id="p_outline" class="primary" style="width:100%">Edit outline&hellip;</button></div>
+      <p class="hint">A big editor with a grid, snapping, typed-in corner positions, mirror editing and as many corners as you like (dents allowed).</p>`;
     h += field('Bezel', `<input type="number" id="p_bezel" step="1" min="0" max="40">`, 'mm');
     h += field('Stands out', `<input type="number" id="p_depth" step="1" min="0" max="40">`, 'mm');
     h += field('Bezel colour', `<select id="p_bezelColor"><option value="black">Black</option><option value="grey">Dark grey</option></select>`);
@@ -465,6 +489,8 @@ function renderProps() {
     bind('p_depth', (el) => (el.value = Math.round((e.depth ?? 0.008) * 1000)), (el) => (e.depth = Math.max(0, +el.value) / 1000));
     bind('p_bezelColor', (el) => (el.value = e.bezelColor || 'black'), (el) => (e.bezelColor = el.value), true, 'change');
     P.querySelectorAll('[data-shape]').forEach((b) => (b.onclick = () => { pushUndo(); e.shape = SHAPES[b.dataset.shape].pts.map((p) => [...p]); changed(e); shapeEditor(e); }));
+    $('p_outline').onclick = () => outlineEditor.open(e);
+    $('shapePreview').onclick = () => outlineEditor.open(e);
     $('p_default').onclick = () => {
       const b = builtinSizes[e.page];
       if (!b) return toast(e.page === 'tac' ? 'The tactical display has no built-in size here: set it by hand (it is 2.1 : 1).' : 'No built-in screen for this page on this jet.');
@@ -527,62 +553,230 @@ function bindCommon(P, x) {
   $('p_move').onclick = () => startPlacing({ move: x });
 }
 
-// screen outline editor: the outline in the screen's own proportions, corners as dots
+// the outline preview in the properties panel (click it to open the outline editor)
 function shapeEditor(e) {
-  const cv = $('shapeCanvas'); if (!cv) return;
+  const cv = $('shapePreview'); if (!cv) return;
   const dpr = devicePixelRatio || 1;
   cv.width = Math.round(cv.clientWidth * dpr); cv.height = Math.round(cv.clientHeight * dpr);
-  const g = cv.getContext('2d');
-  const M = 18 * dpr, a = e.w / e.h;
+  const g = cv.getContext('2d'), M = 14 * dpr, a = e.w / e.h;
   let bw = cv.width - 2 * M, bh = bw / a;
   if (bh > cv.height - 2 * M) { bh = cv.height - 2 * M; bw = bh * a; }
   const ox = (cv.width - bw) / 2, oy = (cv.height - bh) / 2;
-  const toPx = ([x, y]) => [ox + (x + 0.5) * bw, oy + (0.5 - y) * bh];
-  const fromPx = (px, py) => [Math.min(0.5, Math.max(-0.5, (px - ox) / bw - 0.5)), Math.min(0.5, Math.max(-0.5, 0.5 - (py - oy) / bh))];
-  const pts = e.shape || (e.shape = SHAPES.rect.pts.map((p) => [...p]));
-  function draw() {
-    g.clearRect(0, 0, cv.width, cv.height);
-    g.strokeStyle = '#2a3038'; g.lineWidth = 1; g.setLineDash([4 * dpr, 4 * dpr]); g.strokeRect(ox, oy, bw, bh); g.setLineDash([]);
-    const H = hull(pts).map(toPx);
-    g.fillStyle = '#123f24'; g.beginPath(); H.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill();
-    g.strokeStyle = '#46e65a'; g.lineWidth = 2 * dpr; g.stroke();
-    if (!isConvex(pts)) {
-      g.strokeStyle = '#e8b931'; g.setLineDash([3 * dpr, 3 * dpr]); g.beginPath();
-      pts.map(toPx).forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke(); g.setLineDash([]);
-    }
-    for (const p of pts) { const [x, y] = toPx(p); g.fillStyle = '#e8b931'; g.beginPath(); g.arc(x, y, 5 * dpr, 0, Math.PI * 2); g.fill(); }
-    $('shapeWarn').textContent = isConvex(pts) ? '' : 'The dashed outline has a dent: screens are kept convex, so the green shape is what you will get.';
-  }
-  const at = (ev) => { const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left) * dpr, (ev.clientY - r.top) * dpr]; };
-  const nearest = (px, py) => { let bi = -1, bd = 12 * dpr; pts.forEach((p, i) => { const [x, y] = toPx(p); const d = Math.hypot(x - px, y - py); if (d < bd) { bd = d; bi = i; } }); return bi; };
-  let drag = -1;
-  cv.onpointerdown = (ev) => {
-    if (ev.button !== 0) return;
-    const [px, py] = at(ev); drag = nearest(px, py);
-    if (drag >= 0) { pushUndo(); cv.setPointerCapture(ev.pointerId); }
-  };
-  cv.onpointermove = (ev) => { if (drag < 0) return; const [px, py] = at(ev); pts[drag] = fromPx(px, py); draw(); };
-  cv.onpointerup = () => { if (drag >= 0) { drag = -1; changed(e); } };
-  cv.ondblclick = (ev) => {
-    const [px, py] = at(ev); let bi = -1, bd = 14 * dpr;
-    for (let i = 0; i < pts.length; i++) {
-      const [x0, y0] = toPx(pts[i]), [x1, y1] = toPx(pts[(i + 1) % pts.length]);
-      const L2 = (x1 - x0) ** 2 + (y1 - y0) ** 2 || 1; const t = Math.max(0, Math.min(1, ((px - x0) * (x1 - x0) + (py - y0) * (y1 - y0)) / L2));
-      const d = Math.hypot(px - (x0 + t * (x1 - x0)), py - (y0 + t * (y1 - y0)));
-      if (d < bd) { bd = d; bi = i; }
-    }
-    if (bi < 0) return;
-    pushUndo(); pts.splice(bi + 1, 0, fromPx(px, py)); draw(); changed(e);
-  };
-  cv.oncontextmenu = (ev) => {
-    ev.preventDefault();
-    const i = nearest(...at(ev));
-    if (i < 0) return;
-    if (pts.length <= 3) return toast('A screen needs at least 3 corners');
-    pushUndo(); pts.splice(i, 1); draw(); changed(e);
-  };
-  draw();
+  const P = simpleCcw(e.shape || SHAPES.rect.pts).map(([x, y]) => [ox + (x + 0.5) * bw, oy + (0.5 - y) * bh]);
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#123f24'; g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill();
+  g.strokeStyle = '#46e65a'; g.lineWidth = 2 * dpr; g.stroke();
+  g.fillStyle = '#9aa3ad'; g.font = `${11 * dpr}px Segoe UI`; g.fillText(`${(e.shape || []).length} corners · ${(e.w * 100).toFixed(1)} × ${(e.h * 100).toFixed(1)} cm · click to edit`, 6 * dpr, cv.height - 6 * dpr);
 }
+
+// The outline editor: a big canvas in millimetres with a grid, snapping, typed-in corner positions, mirror editing and any
+// number of corners. Works on a copy; Done puts it back on the screen (the screen's box is fitted round the new outline).
+const outlineEditor = (() => {
+  const cv = $('olCanvas');
+  let e = null, pts = [], sel = -1, view = { s: 2, x: 0, y: 0 }, stack = [], drag = null, pan = null;
+  const W = () => e.w * 1000, H = () => e.h * 1000;                    // the screen's box in mm
+  const toMM = ([x, y]) => [x * W(), y * H()];
+  const grid = () => +$('olGrid').value;
+  const snap = (v) => ($('olSnap').checked && grid() ? Math.round(v / grid()) * grid() : v);
+  const px = ([x, y]) => [cv.width / 2 + (x - view.x) * view.s, cv.height / 2 - (y - view.y) * view.s];
+  const mm = (X, Y) => [(X - cv.width / 2) / view.s + view.x, -(Y - cv.height / 2) / view.s + view.y];
+  const save = () => { stack.push(JSON.stringify({ pts, sel })); if (stack.length > 200) stack.shift(); };
+  function fit() {
+    const xs = pts.map((p) => p[0]).concat([-W() / 2, W() / 2]), ys = pts.map((p) => p[1]).concat([-H() / 2, H() / 2]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    view.x = (x0 + x1) / 2; view.y = (y0 + y1) / 2;
+    view.s = Math.min(cv.width / ((x1 - x0) * 1.25 || 1), cv.height / ((y1 - y0) * 1.25 || 1));
+  }
+  function mirrorOf(i) {   // the corner on the other side (x mirrored), if there is one within 1.5 mm
+    const [x, y] = pts[i]; if (Math.abs(x) < 0.25) return -1;
+    let best = -1, bd = 1.5;
+    pts.forEach((p, j) => { if (j !== i) { const d = Math.hypot(p[0] + x, p[1] - y); if (d < bd) { bd = d; best = j; } } });
+    return best;
+  }
+  function moveTo(i, x, y) {
+    const m = $('olMirror').checked ? mirrorOf(i) : -1;
+    if ($('olMirror').checked && Math.abs(pts[i][0]) < 0.25) x = 0;   // on the centre line it stays there
+    pts[i] = [x, y];
+    if (m >= 0) pts[m] = [-x, y];
+  }
+  function draw() {
+    if (!e) return;
+    const g = cv.getContext('2d'), dpr = devicePixelRatio || 1;
+    g.clearRect(0, 0, cv.width, cv.height);
+    const gs = grid();
+    if (gs) {   // grid: fine lines, every 10th stronger
+      const [x0, y1] = mm(0, 0), [x1, y0] = mm(cv.width, cv.height);
+      let step = gs; while (step * view.s < 6 * dpr) step *= 2;
+      for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) {
+        const X = px([x, 0])[0]; g.strokeStyle = Math.abs(x % (step * 10)) < 1e-6 ? '#26303a' : '#161c22'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(X, 0); g.lineTo(X, cv.height); g.stroke();
+      }
+      for (let y = Math.floor(y0 / step) * step; y <= y1; y += step) {
+        const Y = px([0, y])[1]; g.strokeStyle = Math.abs(y % (step * 10)) < 1e-6 ? '#26303a' : '#161c22';
+        g.beginPath(); g.moveTo(0, Y); g.lineTo(cv.width, Y); g.stroke();
+      }
+    }
+    g.strokeStyle = '#3a4550'; g.lineWidth = 1;   // centre lines
+    let [cx, cy] = px([0, 0]); g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, cv.height); g.moveTo(0, cy); g.lineTo(cv.width, cy); g.stroke();
+    // the screen's current box
+    const [bx0, by0] = px([-W() / 2, H() / 2]), [bx1, by1] = px([W() / 2, -H() / 2]);
+    g.setLineDash([5 * dpr, 5 * dpr]); g.strokeStyle = '#4b5662'; g.strokeRect(bx0, by0, bx1 - bx0, by1 - by0); g.setLineDash([]);
+    const bad = pts.length >= 3 && selfCrossing(pts);
+    g.fillStyle = bad ? '#5a1a16aa' : '#123f24cc';
+    g.beginPath(); pts.forEach((p, i) => { const [X, Y] = px(p); i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill();
+    g.strokeStyle = bad ? '#ff6b5b' : '#46e65a'; g.lineWidth = 2 * dpr; g.stroke();
+    pts.forEach((p, i) => {
+      const [X, Y] = px(p);
+      g.fillStyle = i === sel ? '#e8b931' : '#e4e7eb'; g.beginPath(); g.arc(X, Y, (i === sel ? 7 : 5) * dpr, 0, Math.PI * 2); g.fill();
+      if (i === sel) { g.strokeStyle = '#111'; g.lineWidth = 2 * dpr; g.stroke(); }
+    });
+    // size labels
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    g.fillStyle = '#9aa3ad'; g.font = `${12 * dpr}px Segoe UI`;
+    g.fillText(`outline ${(Math.max(...xs) - Math.min(...xs)).toFixed(1)} × ${(Math.max(...ys) - Math.min(...ys)).toFixed(1)} mm`, 10 * dpr, cv.height - 10 * dpr);
+    $('olInfo').textContent = `${pts.length} corners` + (bad ? ' · the outline crosses itself: move a corner so the edges no longer cross' : '');
+    $('olDone').disabled = bad;
+    const has = sel >= 0;
+    $('olX').disabled = $('olY').disabled = $('olDel').disabled = !has;
+    if (has && document.activeElement !== $('olX')) $('olX').value = pts[sel][0].toFixed(1);
+    if (has && document.activeElement !== $('olY')) $('olY').value = pts[sel][1].toFixed(1);
+    if (!has) { $('olX').value = ''; $('olY').value = ''; }
+  }
+  function resize() { const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1; cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  function nearest(X, Y, rad) { let bi = -1, bd = rad; pts.forEach((p, i) => { const [a, b] = px(p); const d = Math.hypot(a - X, b - Y); if (d < bd) { bd = d; bi = i; } }); return bi; }
+  function nearestEdge(X, Y, rad) {
+    let bi = -1, bd = rad, at = null;
+    for (let i = 0; i < pts.length; i++) {
+      const [x0, y0] = px(pts[i]), [x1, y1] = px(pts[(i + 1) % pts.length]);
+      const L2 = (x1 - x0) ** 2 + (y1 - y0) ** 2 || 1, t = Math.max(0, Math.min(1, ((X - x0) * (x1 - x0) + (Y - y0) * (y1 - y0)) / L2));
+      const d = Math.hypot(X - (x0 + t * (x1 - x0)), Y - (y0 + t * (y1 - y0)));
+      if (d < bd) { bd = d; bi = i; at = t; }
+    }
+    return [bi, at];
+  }
+  const at = (ev) => { const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1; return [(ev.clientX - r.left) * dpr, (ev.clientY - r.top) * dpr]; };
+  cv.addEventListener('pointerdown', (ev) => {
+    cv.focus();
+    const [X, Y] = at(ev), dpr = devicePixelRatio || 1;
+    if (ev.button === 2 || ev.button === 1) { pan = { X, Y, vx: view.x, vy: view.y }; cv.setPointerCapture(ev.pointerId); return; }
+    const i = nearest(X, Y, 12 * dpr);
+    sel = i;
+    if (i >= 0) { save(); drag = { i }; cv.setPointerCapture(ev.pointerId); }
+    draw();
+  });
+  cv.addEventListener('pointermove', (ev) => {
+    const [X, Y] = at(ev);
+    if (pan) { view.x = pan.vx - (X - pan.X) / view.s; view.y = pan.vy + (Y - pan.Y) / view.s; draw(); return; }
+    if (!drag) return;
+    const [x, y] = mm(X, Y); moveTo(drag.i, snap(x), snap(y)); draw();
+  });
+  cv.addEventListener('pointerup', () => { drag = null; pan = null; });
+  cv.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  cv.addEventListener('dblclick', (ev) => {
+    const [X, Y] = at(ev), dpr = devicePixelRatio || 1;
+    if (nearest(X, Y, 10 * dpr) >= 0) return;
+    const [i] = nearestEdge(X, Y, 16 * dpr); if (i < 0) return;
+    save(); const [x, y] = mm(X, Y); pts.splice(i + 1, 0, [snap(x), snap(y)]); sel = i + 1; draw();
+  });
+  cv.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const [X, Y] = at(ev), before = mm(X, Y);
+    view.s = Math.min(200, Math.max(0.3, view.s * (ev.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const after = mm(X, Y); view.x += before[0] - after[0]; view.y += before[1] - after[1]; draw();
+  }, { passive: false });
+  cv.addEventListener('keydown', (ev) => {
+    if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+    if (ev.key === 'Escape') { ev.stopPropagation(); close(false); return; }
+    if (ev.key === 'Enter') { ev.stopPropagation(); close(true); return; }
+    if ((ev.key === 'a' || ev.key === 'A')) { addAfter(); return; }
+    if (sel < 0) return;
+    const st = ev.ctrlKey ? 0.1 : ev.shiftKey ? 5 : 0.5;
+    const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, st], ArrowDown: [0, -st] }[ev.key];
+    if (d) { ev.preventDefault(); save(); moveTo(sel, pts[sel][0] + d[0], pts[sel][1] + d[1]); draw(); }
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); del(); }
+  });
+  function undo() { if (!stack.length) return; const s = JSON.parse(stack.pop()); pts = s.pts; sel = s.sel; draw(); }
+  function addAfter() {
+    if (pts.length < 2) return;
+    const i = sel >= 0 ? sel : pts.length - 1, j = (i + 1) % pts.length;
+    save(); pts.splice(i + 1, 0, [(pts[i][0] + pts[j][0]) / 2, (pts[i][1] + pts[j][1]) / 2]); sel = i + 1; draw();
+  }
+  function del() { if (sel < 0) return; if (pts.length <= 3) return toast('A screen needs at least 3 corners'); save(); pts.splice(sel, 1); sel = Math.min(sel, pts.length - 1); draw(); }
+  function setXY() {
+    if (sel < 0) return;
+    const x = parseFloat($('olX').value), y = parseFloat($('olY').value);
+    if (!isFinite(x) || !isFinite(y)) return;
+    save(); moveTo(sel, x, y); draw();
+  }
+  $('olX').addEventListener('change', setXY); $('olY').addEventListener('change', setXY);
+  $('olAdd').onclick = addAfter; $('olDel').onclick = del; $('olUndo').onclick = undo;
+  $('olGrid').onchange = draw;
+  $('olFit').onclick = () => { fit(); draw(); };
+  $('olSub').onclick = () => { save(); const n = []; pts.forEach((p, i) => { const q = pts[(i + 1) % pts.length]; n.push(p, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]); }); pts = n; sel = -1; draw(); };
+  $('olFlipH').onclick = () => { save(); pts = pts.map(([x, y]) => [-x, y]).reverse(); sel = -1; draw(); };
+  $('olFlipV').onclick = () => { save(); pts = pts.map(([x, y]) => [x, -y]).reverse(); sel = -1; draw(); };
+  $('olSym').onclick = () => {
+    // keep the left half (x <= 0, in order round the outline) and mirror it onto the right
+    save();
+    const P = simpleCcw(pts.map((p) => [p[0], p[1]]));
+    const left = [];
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i], b = P[(i + 1) % P.length];
+      if (a[0] <= 0) left.push(a);
+      if ((a[0] < 0 && b[0] > 0) || (a[0] > 0 && b[0] < 0)) { const t = a[0] / (a[0] - b[0]); left.push([0, a[1] + t * (b[1] - a[1])]); }
+    }
+    // start the half at its top crossing so it runs top -> down the left side -> bottom crossing
+    if (left.length < 2) return;
+    let k = left.findIndex((p, i) => Math.abs(p[0]) < 1e-9 && left[(i + 1) % left.length][0] < 0);
+    if (k < 0) k = 0;
+    const half = left.slice(k).concat(left.slice(0, k));
+    const right = half.filter((p) => Math.abs(p[0]) > 1e-9).map(([x, y]) => [-x, y]).reverse();
+    pts = half.concat(right); sel = -1; draw();
+  };
+  $('olRound').onclick = () => {
+    const idx = sel >= 0 ? [sel] : pts.map((_, i) => i);
+    save();
+    const r = Math.max(0.5, +$('olRadius').value || 6), out = [];
+    pts.forEach((p, i) => {
+      if (!idx.includes(i)) { out.push(p); return; }
+      const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length];
+      const da = Math.hypot(a[0] - p[0], a[1] - p[1]), db = Math.hypot(b[0] - p[0], b[1] - p[1]);
+      const rr = Math.min(r, da / 2.2, db / 2.2);
+      const A = [p[0] + (a[0] - p[0]) / da * rr, p[1] + (a[1] - p[1]) / da * rr], B = [p[0] + (b[0] - p[0]) / db * rr, p[1] + (b[1] - p[1]) / db * rr];
+      for (let k = 0; k <= 4; k++) {   // quadratic curve A -> p -> B
+        const t = k / 4, u = 1 - t;
+        out.push([u * u * A[0] + 2 * u * t * p[0] + t * t * B[0], u * u * A[1] + 2 * u * t * p[1] + t * t * B[1]]);
+      }
+    });
+    pts = out; sel = -1; draw();
+  };
+  $('olPresets').innerHTML = Object.entries(SHAPES).map(([k, v]) => `<button data-ol="${k}">${v.name}</button>`).join('');
+  $('olPresets').querySelectorAll('[data-ol]').forEach((b) => (b.onclick = () => { save(); pts = SHAPES[b.dataset.ol].pts.map(toMM); sel = -1; fit(); draw(); }));
+  function open(el) {
+    e = el; pts = (e.shape || SHAPES.rect.pts).map(toMM); sel = -1; stack = [];
+    $('outlineModal').style.display = 'flex';
+    resize(); fit(); draw(); cv.focus();
+  }
+  function close(apply) {
+    if (apply && e) {
+      if (pts.length < 3 || selfCrossing(pts)) return toast('The outline crosses itself: fix it first');
+      // fit the screen's box round the outline: centre and size follow, corners stay where they are in the cockpit
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      pushUndo();
+      const { up, right } = basisOf(e);
+      e.pos = e.pos.clone().addScaledVector(right, cx / 1000).addScaledVector(up, cy / 1000);
+      e.w = w / 1000; e.h = h / 1000;
+      e.shape = pts.map(([x, y]) => [+((x - cx) / w).toFixed(5), +((y - cy) / h).toFixed(5)]);
+      changed(e); renderProps();
+    }
+    $('outlineModal').style.display = 'none'; e = null;
+  }
+  $('olDone').onclick = () => close(true); $('olCancel').onclick = () => close(false);
+  new ResizeObserver(() => { if (e) { resize(); draw(); } }).observe(cv);
+  return { open, isOpen: () => !!e };
+})();
 function fitHeight(e) {
   // the text block's width : height at 100 px, and the frame drawDecal puts round it (shares of the decal's short side)
   const s = e.style, lines = (s.text || ' ').split('\n');
@@ -669,6 +863,7 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   else select(null);
 });
 window.addEventListener('keydown', (ev) => {
+  if (outlineEditor.isOpen()) return;   // the outline editor has its own keys
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (ev.ctrlKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); return; }
   if (typing) return;
