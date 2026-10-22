@@ -100,6 +100,48 @@ function bar(c, x, y, w, h, f, col, mark) {
   if (mark >= 0 && mark <= 1) c.fill(x + R2I(w * mark) - 1, y - 2, 2, h + 4, Red);
 }
 const frame = (c, x0, y0, x1, y1, col, t = 2) => { c.fill(x0, y0, x1 - x0, t, col); c.fill(x0, y1 - t, x1 - x0, t, col); c.fill(x0, y0, t, y1 - y0, col); c.fill(x1 - t, y0, t, y1 - y0, col); };
+const num = (v, d) => (v === undefined || v === null || v === '' || isNaN(+v) ? d : +v);
+function dial(c, cx, cy, r, v, lo, hi, red) {   // Pages.Dial: 270 degree arc, value filled, red above `red`, white pointer
+  const a0 = -135, a1 = 135, f = clamp01((v - lo) / (hi - lo)), fr = clamp01((red - lo) / (hi - lo));
+  for (let a = a0; a <= a1; a += 1.5) {
+    const t = (a - a0) / (a1 - a0), col = t >= fr ? Red : t <= f ? (v >= red ? Red : Green) : Grey, d = [Math.sin(a * DEG), Math.cos(a * DEG)];
+    const k = t <= f ? r - 10 : r - 4;
+    c.line([cx + d[0] * k, cy + d[1] * k], [cx + d[0] * r, cy + d[1] * r], col, 2);
+  }
+  const na = (a0 + f * (a1 - a0)) * DEG;
+  c.line([cx, cy], [cx + Math.sin(na) * (r - 3), cy + Math.cos(na) * (r - 3)], White, 3);
+}
+const imgCache = new Map();   // data URL -> {w, h, px (rows top-down)} once decoded
+function image(src) {
+  if (!src) return null;
+  const hit = imgCache.get(src);
+  if (hit !== undefined) return hit;
+  imgCache.set(src, null);
+  const im = new Image();
+  im.onload = () => { const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height; const g = cv.getContext('2d'); g.drawImage(im, 0, 0); imgCache.set(src, { w: im.width, h: im.height, px: g.getImageData(0, 0, im.width, im.height).data }); };
+  im.src = src.startsWith('data:') ? src : 'data:image/png;base64,' + src;
+  return null;
+}
+function fieldNum(f, s) {
+  switch (f) {
+    case 'ias': return s.iasKmh; case 'alt': return s.altM; case 'radalt': return s.radAltM; case 'mach': return s.mach; case 'g': return s.g;
+    case 'aoa': return s.aoaDeg; case 'vs': return s.vsMs; case 'heading': return rep(s.headingDeg, 360); case 'pitch': return s.pitchDeg; case 'roll': return s.rollDeg;
+    case 'throttle': return s.throttle * 100; case 'rpm_l': return s.rpmL; case 'rpm_r': return s.rpmR; case 'egt_l': return s.egtL; case 'egt_r': return s.egtR;
+    case 'fuel': return s.fuelKg; case 'fuel_pct': return s.fuelFrac * 100; case 'ptb': return s.extFuelKg; case 'hyd': return s.hydraulic; case 'oxy': return s.oxygen;
+    case 'target_km': return s.target ? s.targetKm : NaN; case 'rcs': return s.rcs; case 'ir': return s.irFrac * 100;
+    default: return NaN;
+  }
+}
+export function fieldRange(f) {
+  switch (f) {
+    case 'ias': return [0, 1600]; case 'alt': return [0, 15000]; case 'radalt': return [0, 1500]; case 'mach': return [0, 2.5]; case 'g': return [-3, 9];
+    case 'aoa': return [-5, 30]; case 'vs': return [-100, 100]; case 'heading': return [0, 360]; case 'pitch': return [-90, 90]; case 'roll': return [-180, 180];
+    case 'rpm_l': case 'rpm_r': return [0, 110]; case 'egt_l': case 'egt_r': return [0, 1000]; case 'fuel': return [0, 4500]; case 'ptb': return [0, 3000];
+    case 'hyd': return [0, 250]; case 'oxy': return [0, 150]; case 'target_km': return [0, 100]; case 'rcs': return [0, 5];
+    default: return [0, 100];
+  }
+}
+const fieldSpan = (f) => { const [lo, hi] = fieldRange(f); return Math.max(1, (hi - lo) / 5); };
 function fit(t, w, h, max) { for (let sc = Math.max(1, max); sc > 1; sc--) if (TW(t, sc) <= w && 7 * sc <= h) return sc; return 1; }
 export function hexCol(hex, fb) { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return fb; const v = parseInt(m[1], 16); return [v >> 16, (v >> 8) & 255, v & 255, 255]; }
 const THREAT = ['F', 'SL', 'SS', 'U', 'U', 'N'];
@@ -157,7 +199,10 @@ export function drawPage(c, s, p) {
     const x0 = R2I(w.x * c.W), x1 = R2I((w.x + w.w) * c.W), y1 = R2I((1 - w.y) * c.H), y0 = R2I((1 - w.y - w.h) * c.H);
     if (x1 - x0 < 4 || y1 - y0 < 4) continue;
     c.clip(x0, y0, x1, y1);
+    if (w.bg) c.fill(x0, y0, x1 - x0, y1 - y0, hexCol(w.bg, Black));
     try { widget(c, s, w, x0, y0, x1, y1); } catch (e) { console.warn(w.type, e); }
+    c.clip(x0, y0, x1, y1);
+    if (w.border) frame(c, x0, y0, x1, y1, hexCol(w.border, Grey), Math.max(1, Math.trunc(num(w.borderW, 2))));
     c.clip(0, 0, c.W, c.H);
   }
 }
@@ -166,10 +211,12 @@ function widget(c, s, w, x0, y0, x1, y1) {
   const W = x1 - x0, H = y1 - y0, cx = Math.trunc((x0 + x1) / 2), cy = Math.trunc((y0 + y1) / 2), main = hexCol(w.color, White);
   switch (w.type) {
     case 'attitude': {
-      const ppd = H / 45; horizon(c, x0, y0, x1, y1, cx, cy, s, ppd);
-      const r = s.rollDeg * DEG, dir = [Math.cos(r), Math.sin(r)], nrm = [-Math.sin(r), Math.cos(r)], ts = W >= 200 ? 2 : 1;
+      const ppd = H / 45, r = s.rollDeg * DEG;
+      { const sky = hexCol(w.sky, Sky), gnd = hexCol(w.ground, Ground), sin = Math.sin(r), cos = Math.cos(r), off = s.pitchDeg * ppd;
+        for (let y = Math.max(0, y0); y < Math.min(c.H, y1); y++) for (let x = Math.max(0, x0); x < Math.min(c.W, x1); x++) c.set((y * c.W + x) * 4, -(x - cx) * sin + (y - cy) * cos + off > 0 ? sky : gnd); }
+      const dir = [Math.cos(r), Math.sin(r)], nrm = [-Math.sin(r), Math.cos(r)], ts = W >= 200 ? 2 : 1, step = Math.max(5, Math.trunc(num(w.ladderStep, 5)));
       const at = (m, v, k) => [m[0] + v[0] * k, m[1] + v[1] * k];
-      for (let pp = -90; pp <= 90; pp += 5) {
+      for (let pp = -90; pp <= 90; pp += step) {
         const d = (pp - s.pitchDeg) * ppd; if (Math.abs(d) > H * 0.45) continue;
         const m = at([cx, cy], nrm, d);
         if (pp === 0) { c.line(at(m, dir, -W), at(m, dir, W), White, 3); continue; }
@@ -180,7 +227,7 @@ function widget(c, s, w, x0, y0, x1, y1) {
         if (pp % 10 === 0) { const a = at(m, dir, half + 5); c.text(Math.trunc(a[0]), Math.trunc(a[1]) - 3 * ts, String(Math.abs(pp)), White, ts); }
       }
       const br = Math.min(W, H) / 2 - 14;
-      if (br > 20) {
+      if (br > 20 && !w.noBank) {
         for (const k of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) { const a = k * DEG, r1 = Math.abs(k) % 30 === 0 ? br + 12 : br + 7; c.line([cx + Math.sin(a) * br, cy + Math.cos(a) * br], [cx + Math.sin(a) * r1, cy + Math.cos(a) * r1], White, 2); }
         const pa = [cx - Math.sin(r) * (br - 3), cy + Math.cos(r) * (br - 3)], v1 = rot([-7, -12], r), v2 = rot([7, -12], r);
         c.tri(pa, [pa[0] + v1[0], pa[1] + v1[1]], [pa[0] + v2[0], pa[1] + v2[1]], Yellow);
@@ -193,7 +240,9 @@ function widget(c, s, w, x0, y0, x1, y1) {
       break;
     }
     case 'speed_tape': case 'alt_tape': {
-      const spd = w.type === 'speed_tape', v = spd ? s.iasKmh : s.altM, span = spd ? 300 : 1400, tick = spd ? 10 : 50, lab = spd ? 50 : 200, ppu = H / span;
+      const spd = w.type === 'speed_tape', v = spd ? s.iasKmh : s.altM, span = Math.max(20, num(w.span, spd ? 300 : 1400)), ppu = H / span;
+      let tick = spd ? 10 : 50, lab = spd ? 50 : 200;
+      if (spd && span > 800) { tick = 50; lab = 200; } else if (!spd && span > 4000) { tick = 200; lab = 1000; }
       c.fill(x0, y0, W, H, Black);
       const ts = W >= 70 ? 2 : 1;
       for (let u = Math.floor((v - span / 2) / tick) * tick; u <= v + span / 2; u += tick) {
@@ -222,10 +271,13 @@ function widget(c, s, w, x0, y0, x1, y1) {
       break;
     }
     case 'value': {
-      const label = w.label ? w.label.toUpperCase() : (FIELDS[w.field] || [''])[0], val = fieldText(w.field, s), col = fieldWarn(w.field, s) || main;
+      const label = w.label ? w.label.toUpperCase() : (FIELDS[w.field] || [''])[0], col = fieldWarn(w.field, s) || main;
+      let val = fieldText(w.field, s); const dec = Math.trunc(num(w.decimals, -1)), n = fieldNum(w.field, s);
+      if (dec >= 0 && !isNaN(n)) val = n.toFixed(Math.min(dec, 4));
+      val += (w.unit || '').toUpperCase();
       if (w.frame) frame(c, x0, y0, x1, y1, Grey);
       const ls = label.length > 0 ? Math.max(1, Math.min(2, Math.trunc((H - 8) / 22))) : 0;
-      if (ls > 0) c.text(x0 + 6, y1 - 6 - 7 * ls, label, Cyan, ls);
+      if (ls > 0) c.text(x0 + 6, y1 - 6 - 7 * ls, label, hexCol(w.labelColor, Cyan), ls);
       const vh = H - 10 - (ls > 0 ? 7 * ls + 4 : 0), vs = w.size > 0 ? w.size : fit(val, W - 12, vh, 5);
       c.text(x1 - 6 - TW(val, vs), y0 + 5, val, col, vs);
       break;
@@ -266,8 +318,9 @@ function widget(c, s, w, x0, y0, x1, y1) {
       let y = y1 - rh;
       if (w.frame) { c.text(x0 + 4, y1 - 18, 'STORES', Cyan, 2); y = y1 - 20 - rh; }
       if (!s.stations.length) c.text(x0 + 8, y, 'NONE', DimGreen, sc);
+      const maxRows = Math.trunc(num(w.rows, 0)); let shown = 0;
       for (const [name, ammo, , selected] of s.stations) {
-        if (y < y0) break;
+        if (y < y0 || (maxRows > 0 && shown++ >= maxRows)) break;
         if (selected) { c.fill(x0 + 2, y - 4, W - 4, rh - 2, DarkCyan); c.fill(x0 + 2, y - 4, 4, rh - 2, Cyan); }
         const n = name.slice(0, 8).toUpperCase(), a = String(ammo);
         c.text(x0 + 10, y, n, selected ? Cyan : White, sc);
@@ -337,6 +390,77 @@ function widget(c, s, w, x0, y0, x1, y1) {
       if (!row) c.text(x0 + 6, y1 - 22, 'NO CAUTIONS', DimGreen, 2);
       break;
     }
+    case 'dial': {
+      let v = fieldNum(w.field, s); if (isNaN(v)) v = 0;
+      const [dlo, dhi] = fieldRange(w.field), lo = num(w.min, dlo), hi = num(w.max, dhi), red = num(w.red, hi + 1), R = Math.min(W, H) / 2 - 4;
+      if (R < 8) break;
+      for (let k = 0; k <= 10; k++) { const a = (-135 + 27 * k) * DEG, d = [Math.sin(a), Math.cos(a)], k0 = R - (k % 5 === 0 ? 9 : 5); c.line([cx + d[0] * k0, cy + d[1] * k0], [cx + d[0] * R, cy + d[1] * R], main, 2); }
+      dial(c, cx, cy, R - 12, v, lo, hi, red);
+      const lbl = w.label ? w.label.toUpperCase() : (FIELDS[w.field] || [''])[0], ls = R > 50 ? 2 : 1;
+      c.text(cx - Math.trunc(TW(lbl, ls) / 2), cy + Math.trunc(R * 0.35), lbl, hexCol(w.labelColor, Cyan), ls);
+      if (w.showValue !== false) { const t = fieldText(w.field, s), vs = fit(t, Math.trunc(R * 1.2), Math.trunc(R * 0.4), 3); c.text(cx - Math.trunc(TW(t, vs) / 2), cy - Math.trunc(R * 0.55), t, fieldWarn(w.field, s) || White, vs); }
+      break;
+    }
+    case 'compass': {
+      const hdg = rep(s.headingDeg, 360), R = Math.min(W, H) / 2 - 4; if (R < 12) break;
+      c.circle(cx, cy, R, Grey);
+      const ts = R > 70 ? 2 : 1;
+      for (let d = 0; d < 360; d += 5) {
+        const a = (d - hdg) * DEG, u = [Math.sin(a), Math.cos(a)], len = d % 30 === 0 ? 10 : d % 10 === 0 ? 6 : 3;
+        c.line([cx + u[0] * (R - len), cy + u[1] * (R - len)], [cx + u[0] * R, cy + u[1] * R], main, d % 10 === 0 ? 2 : 1);
+        if (d % 30 === 0) {
+          const t = d === 0 ? 'N' : d === 90 ? 'E' : d === 180 ? 'S' : d === 270 ? 'W' : String(d / 10), k = R - 12 - 5 * ts;
+          c.text(Math.trunc(cx + u[0] * k) - Math.trunc(TW(t, ts) / 2), Math.trunc(cy + u[1] * k) - Math.trunc(7 * ts / 2), t, d % 90 === 0 ? Yellow : main, ts);
+        }
+      }
+      c.tri([cx, cy + R + 1], [cx - 6, cy + R - 9], [cx + 6, cy + R - 9], Yellow);
+      c.line([cx, cy - 10], [cx, cy + 12], Yellow, 3); c.line([cx - 10, cy + 4], [cx + 10, cy + 4], Yellow, 3); c.line([cx - 5, cy - 9], [cx + 5, cy - 9], Yellow, 2);
+      break;
+    }
+    case 'aoa_index': {
+      const lo = num(w.lo, 8), hi = num(w.hi, 14), a = s.aoaDeg, sz = Math.min(W - 4, Math.trunc(H / 3) - 4), hh = Math.trunc(sz / 2);
+      if (sz < 6) break;
+      const dim = [40, 44, 48, 255], yt = y1 - Math.trunc(H / 6), ym = cy, yb = y0 + Math.trunc(H / 6);
+      const top = a > hi ? Red : dim, mid = a >= lo && a <= hi ? Green : dim, bot = a < lo ? Amber : dim, h2 = Math.trunc(hh / 2);
+      c.line([cx - hh, yt + h2], [cx, yt - h2], top, 4); c.line([cx, yt - h2], [cx + hh, yt + h2], top, 4);
+      c.circle(cx, ym, hh * 0.7, mid); c.circle(cx, ym, hh * 0.7 - 1, mid); c.circle(cx, ym, hh * 0.7 - 2, mid);
+      c.line([cx - hh, yb - h2], [cx, yb + h2], bot, 4); c.line([cx, yb + h2], [cx + hh, yb - h2], bot, 4);
+      break;
+    }
+    case 'vtape': {
+      let v = fieldNum(w.field, s); if (isNaN(v)) v = 0;
+      const span = Math.max(1, num(w.span, fieldSpan(w.field))); let tick = num(w.tick, span / 20); if (tick <= 0) tick = span / 20;
+      const ppu = H / span, ts = W >= 70 ? 2 : 1, left = w.align === 'right';
+      c.fill(x0, y0, W, H, Black);
+      for (let k = Math.floor((v - span / 2) / tick); k * tick <= v + span / 2; k++) {
+        const u = k * tick, y = cy + R2I((u - v) * ppu), big = ((k % 5) + 5) % 5 === 0, len = big ? 12 : 7;
+        if (left) c.fill(x0, y - 1, len, 3, main); else c.fill(x1 - len, y - 1, len, 3, main);
+        if (big) { const t = String(R2I(u)); if (left) c.text(x0 + 15, y - Math.trunc(7 * ts / 2), t, main, ts); else c.text(x1 - 15 - TW(t, ts), y - Math.trunc(7 * ts / 2), t, main, ts); }
+      }
+      const val = fieldText(w.field, s), bh = Math.min(36, Math.trunc(H / 4));
+      c.clip(0, 0, c.W, c.H);
+      valueBox(c, x0, cy - Math.trunc(bh / 2), W, bh, val, fieldWarn(w.field, s) || White, fit(val, W - 8, bh - 8, 3));
+      break;
+    }
+    case 'line': {
+      const col = hexCol(w.color, Grey), th = Math.max(1, w.thick || 1), d = !w.align || w.align === 'left' ? 'h' : w.align;
+      if (d === 'h') c.fill(x0, cy - Math.trunc(th / 2), W, th, col);
+      else if (d === 'v') c.fill(cx - Math.trunc(th / 2), y0, th, H, col);
+      else if (d === 'd1') c.line([x0, y1 - 1], [x1 - 1, y0], col, th);
+      else c.line([x0, y0], [x1 - 1, y1 - 1], col, th);
+      break;
+    }
+    case 'image': {
+      const img = image(w.img); if (!img) break;
+      for (let yy = 0; yy < H; yy++) {
+        const sy = Math.min(img.h - 1, Math.max(0, Math.trunc((yy + 0.5) * img.h / H))), y = y1 - 1 - yy;
+        for (let xx = 0; xx < W; xx++) {
+          const i = (sy * img.w + Math.min(img.w - 1, Math.max(0, Math.trunc((xx + 0.5) * img.w / W)))) * 4;
+          if (img.px[i + 3] > 127) c.plot(x0 + xx, y, [img.px[i], img.px[i + 1], img.px[i + 2], 255]);
+        }
+      }
+      break;
+    }
     case 'warnings': {
       let y = y1 - 26; const sc = fit('MISSILE', W - 8, 22, 3);
       if (s.missileIncoming && s.blink) { c.fill(cx - Math.trunc(TW('MISSILE', sc) / 2) - 4, y - 4, TW('MISSILE', sc) + 8, 7 * sc + 8, WarnBack); c.text(cx - Math.trunc(TW('MISSILE', sc) / 2), y, 'MISSILE', Red, sc); y -= 7 * sc + 12; }
@@ -386,5 +510,11 @@ export const WIDGETS = {
   cautions: { name: 'Caution list', box: [0.03, 0.75, 0.94, 0.2] },
   warnings: { name: 'Warnings (missile, lock, gear)', box: [0.25, 0.5, 0.5, 0.12] },
   text: { name: 'Text label', box: [0.05, 0.05, 0.5, 0.05], text: 'LABEL', color: '#3cd2e6' },
-  box: { name: 'Box / line', box: [0.05, 0.5, 0.9, 0.006], fill: true, color: '#464a50' },
+  box: { name: 'Box', box: [0.05, 0.5, 0.9, 0.1], fill: false, color: '#464a50' },
+  dial: { name: 'Round dial (any reading)', box: [0.25, 0.3, 0.5, 0.25], field: 'rpm_l' },
+  compass: { name: 'Compass rose', box: [0.15, 0.3, 0.7, 0.32] },
+  aoa_index: { name: 'AoA indexer', box: [0.85, 0.3, 0.12, 0.25] },
+  vtape: { name: 'Vertical tape (any reading)', box: [0.05, 0.3, 0.2, 0.4], field: 'fuel' },
+  line: { name: 'Line', box: [0.05, 0.5, 0.9, 0.02], color: '#464a50' },
+  image: { name: 'Picture', box: [0.3, 0.05, 0.4, 0.15] },
 };

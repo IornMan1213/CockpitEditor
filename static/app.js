@@ -7,7 +7,7 @@
 //   group   one of the cockpit's own instruments / displays / panels (cockpit_mesh.json "groups"), moved by a transform
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Canvas, drawPage, sampleState, WIDGETS, FIELDS } from './mfd.js';
+import { Canvas, drawPage, sampleState, WIDGETS, FIELDS, fieldRange } from './mfd.js';
 
 const $ = (id) => document.getElementById(id);
 const toU = (v) => [+v.x.toFixed(5), +v.y.toFixed(5), +(-v.z).toFixed(5)];
@@ -1165,19 +1165,43 @@ const designer = (() => {
     const w = pg.widgets[sel], meta = WIDGETS[w.type] || { name: w.type };
     const pct = (v) => (v * 100).toFixed(1);
     if (numbersOnly && $('pd_x')) { $('pd_x').value = pct(w.x); $('pd_y').value = pct(w.y); $('pd_w').value = pct(w.w); $('pd_h').value = pct(w.h); $('pd_px').textContent = pxText(w); return; }
-    const hasField = w.type === 'value' || w.type === 'bar';
+    const hasField = ['value', 'bar', 'dial', 'vtape'].includes(w.type);
     let h = `<h2>${meta.name}</h2>
       ${field('Left', `<input type="number" id="pd_x" step="0.5">`, '%')}${field('Top', `<input type="number" id="pd_y" step="0.5">`, '%')}
       ${field('Width', `<input type="number" id="pd_w" step="0.5" min="0.5">`, '%')}${field('Height', `<input type="number" id="pd_h" step="0.5" min="0.5">`, '%')}
       <p class="hint" id="pd_px"></p>`;
     if (hasField) h += field('Shows', `<select id="pd_field">${Object.entries(FIELDS).map(([k, v]) => `<option value="${k}"${k === w.field ? ' selected' : ''}>${v[1]}</option>`).join('')}</select>`);
-    if (w.type === 'value') h += field('Label', `<input type="text" id="pd_label" placeholder="${(FIELDS[w.field] || [''])[0]}">`);
+    if (w.type === 'value' || w.type === 'dial') h += field('Label', `<input type="text" id="pd_label" placeholder="${(FIELDS[w.field] || [''])[0]}">`);
     if (w.type === 'text') h += field('Text', `<input type="text" id="pd_text">`) + field('Align', `<select id="pd_align"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>`);
     if (['value', 'text', 'clock', 'stores'].includes(w.type)) h += field('Text size', `<select id="pd_size"><option value="0">Auto (fit)</option><option value="1">1 (tiny)</option><option value="2">2 (labels)</option><option value="3">3 (values)</option><option value="4">4</option><option value="5">5 (big)</option></select>`);
-    if (['value', 'text', 'clock', 'bar', 'box', 'speed_tape', 'alt_tape', 'heading_tape'].includes(w.type))
+    if (['value', 'text', 'clock', 'bar', 'box', 'speed_tape', 'alt_tape', 'heading_tape', 'dial', 'compass', 'vtape', 'line'].includes(w.type))
       h += `<div class="row"><label>Colour</label><input type="color" id="pd_color"><label style="width:auto"><input type="checkbox" id="pd_colDef"> default</label></div>`;
     if (['attitude', 'speed_tape', 'alt_tape', 'value', 'stores', 'engines', 'fuel', 'signature'].includes(w.type)) h += `<div class="check"><input type="checkbox" id="pd_frame"><label for="pd_frame">Frame round it</label></div>`;
     if (w.type === 'box') h += `<div class="check"><input type="checkbox" id="pd_fill"><label for="pd_fill">Filled (off = outline)</label></div>` + field('Line', `<input type="number" id="pd_thick" min="1" max="10">`, 'px');
+    // ---- this widget's own options (stored on it; the plugin reads the same names)
+    const O = [];   // [kind, key, label, extra]
+    const [rlo, rhi] = fieldRange(w.field);
+    if (w.type === 'value') O.push(['num', 'decimals', 'Decimals', { ph: 'auto', min: 0, max: 4, step: 1 }], ['text', 'unit', 'Unit after it', { ph: 'e.g. KM' }], ['col', 'labelColor', 'Label colour']);
+    if (w.type === 'dial') O.push(['num', 'min', 'Scale from', { ph: rlo }], ['num', 'max', 'Scale to', { ph: rhi }], ['num', 'red', 'Red from', { ph: 'none' }], ['bool', 'showValue', 'Show the number', { def: true }], ['col', 'labelColor', 'Label colour']);
+    if (w.type === 'vtape') O.push(['num', 'span', 'Range shown', { ph: Math.max(1, (rhi - rlo) / 5) }], ['num', 'tick', 'Tick every', { ph: 'auto' }], ['sel', 'align', 'Scale side', { opts: [['left', 'Right edge'], ['right', 'Left edge']] }]);
+    if (w.type === 'speed_tape') O.push(['num', 'span', 'Range shown', { ph: 300, unit: 'km/h' }]);
+    if (w.type === 'alt_tape') O.push(['num', 'span', 'Range shown', { ph: 1400, unit: 'm' }]);
+    if (w.type === 'attitude') O.push(['col', 'sky', 'Sky colour'], ['col', 'ground', 'Ground colour'], ['sel', 'ladderStep', 'Ladder every', { opts: [['5', '5 degrees'], ['10', '10 degrees']] }], ['bool', 'noBank', 'Hide the bank scale']);
+    if (w.type === 'stores') O.push(['num', 'rows', 'Rows at most', { ph: 'all', min: 0, step: 1 }]);
+    if (w.type === 'aoa_index') O.push(['num', 'lo', 'On speed from', { ph: 8, unit: 'deg' }], ['num', 'hi', 'On speed to', { ph: 14, unit: 'deg' }]);
+    if (w.type === 'line') O.push(['sel', 'align', 'Direction', { opts: [['left', 'Across'], ['v', 'Up and down'], ['d1', 'Diagonal /'], ['d2', 'Diagonal \\']] }], ['num', 'thick', 'Thickness', { ph: 2, min: 1, max: 20, step: 1, unit: 'px' }]);
+    if (w.type === 'image') O.push(['img', 'img', 'Picture']);
+    O.push(['col', 'bg', 'Background'], ['col', 'border', 'Border'], ['num', 'borderW', 'Border width', { ph: 2, min: 1, max: 10, step: 1, unit: 'px' }]);
+    h += '<h2>Options</h2>';
+    O.forEach(([kind, key, label, x = {}], i) => {
+      const id = 'pdo_' + i;
+      if (kind === 'num') h += field(label, `<input type="number" id="${id}" placeholder="${x.ph ?? ''}"${x.min !== undefined ? ` min="${x.min}"` : ''}${x.max !== undefined ? ` max="${x.max}"` : ''} step="${x.step ?? 'any'}">`, x.unit || '');
+      else if (kind === 'text') h += field(label, `<input type="text" id="${id}" placeholder="${x.ph ?? ''}">`);
+      else if (kind === 'col') h += `<div class="row"><label>${label}</label><input type="color" id="${id}"><label style="width:auto"><input type="checkbox" id="${id}_n"> none</label></div>`;
+      else if (kind === 'bool') h += `<div class="check"><input type="checkbox" id="${id}"><label for="${id}">${label}</label></div>`;
+      else if (kind === 'sel') h += field(label, `<select id="${id}">${x.opts.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>`);
+      else if (kind === 'img') h += `<div class="row"><label>${label}</label><button id="${id}">Choose a PNG&hellip;</button>${w.img ? `<button id="${id}_x" class="danger">Remove</button>` : ''}</div><p class="hint">Small pictures work best (it is drawn pixel by pixel; transparent parts stay see-through).</p>`;
+    });
     h += `<div class="grid2" style="margin-top:10px"><button id="pd_front">Bring to front</button><button id="pd_back">Send to back</button><button id="pd_dup">Duplicate</button><button id="pd_del" class="danger">Delete</button></div>`;
     P.innerHTML = h;
     const num = (id, get, set) => { const el = $(id); el.value = get(); el.addEventListener('focus', () => save()); el.addEventListener('input', () => { set(+el.value); props(true); }); };
@@ -1199,6 +1223,34 @@ const designer = (() => {
       c.addEventListener('focus', () => save()); c.addEventListener('input', () => { w.color = c.value; d.checked = false; setDirty(true); });
       d.addEventListener('change', () => { save(); w.color = d.checked ? '' : c.value; });
     }
+    O.forEach(([kind, key, label, x = {}], i) => {
+      const id = 'pdo_' + i, el = $(id); if (!el) return;
+      if (kind === 'num' || kind === 'text') {
+        el.value = w[key] ?? ''; el.addEventListener('focus', () => save());
+        el.addEventListener('input', () => { if (el.value === '') delete w[key]; else w[key] = kind === 'num' ? +el.value : el.value; setDirty(true); });
+      } else if (kind === 'col') {
+        const none = $(id + '_n'); el.value = w[key] || '#000000'; none.checked = !w[key];
+        el.addEventListener('focus', () => save()); el.addEventListener('input', () => { w[key] = el.value; none.checked = false; setDirty(true); });
+        none.addEventListener('change', () => { save(); if (none.checked) delete w[key]; else w[key] = el.value; });
+      } else if (kind === 'bool') {
+        el.checked = w[key] === undefined ? !!x.def : !!w[key];
+        el.addEventListener('change', () => { save(); w[key] = el.checked; });
+      } else if (kind === 'sel') {
+        el.value = String(w[key] ?? x.opts[0][0]);
+        el.addEventListener('change', () => { save(); w[key] = key === 'ladderStep' ? +el.value : el.value; });
+      } else if (kind === 'img') {
+        el.onclick = () => pickImage((url) => {
+          // shrink to 256 px: the screen draws it pixel by pixel
+          const im = new Image(); im.onload = () => {
+            const k = Math.min(1, 256 / Math.max(im.width, im.height)), cv = document.createElement('canvas');
+            cv.width = Math.max(1, Math.round(im.width * k)); cv.height = Math.max(1, Math.round(im.height * k));
+            cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+            save(); w[key] = cv.toDataURL('image/png'); props();
+          }; im.src = url;
+        });
+        if ($(id + '_x')) $(id + '_x').onclick = () => { save(); delete w[key]; props(); };
+      }
+    });
     $('pd_front').onclick = () => { save(); pg.widgets.push(pg.widgets.splice(sel, 1)[0]); sel = pg.widgets.length - 1; props(); };
     $('pd_back').onclick = () => { save(); pg.widgets.unshift(pg.widgets.splice(sel, 1)[0]); sel = 0; props(); };
     $('pd_dup').onclick = dup; $('pd_del').onclick = del;

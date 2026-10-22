@@ -6,6 +6,7 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 - **Add custom screens (MFDs)** of any size and any outline (as many corners as you like, dents allowed), showing any SMT display page, a page of your own, or the tactical display.
 - **Design your own MFD pages** from widgets (attitude, tapes, readings, RWR, stores, engines...) with a pixel-accurate live preview, and show them on any screen, built-in ones included.
 - **Add decals**: STEP HERE, NO STEP, hazard stripes, placards, or your own pictures.
+- **Cockpit setups (.cpit)**: export a whole cockpit as one file that players drop in a Cockpits folder and switch between in game (Configuration Manager), no rebuilding. Anything wrong with a file falls back to the default cockpit.
 - **Build & Install** the mod with your changes in one click.
 
 ## Quick start
@@ -24,6 +25,7 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 6. [Troubleshooting](docs/06-troubleshooting.md)
 7. [How it works](docs/07-how-it-works.md): for developers
 8. [Page designer](docs/08-page-designer.md): your own MFD pages
+9. [Cockpit setups](docs/09-cockpit-setups.md): .cpit files, switching cockpits in game
 
 ## Keys (with something selected)
 

@@ -56,7 +56,15 @@ the same pixels, font and colours as the game, with moving sample flight data, s
 | Caution list | active warnings (red) and cautions (amber) |
 | Warnings | MISSILE (flashing), LOCK, GEAR, A/B |
 | Text label | your own text |
-| Box / line | a filled box, an outline, or a thin line (a very flat box) |
+| Box | a filled box or an outline |
+| Round dial | any reading on a 270 degree dial with a red zone (Options: scale from / to, red from, show the number) |
+| Compass rose | turning compass card with N E S W, lubber line and aircraft symbol |
+| AoA indexer | slow / on speed / fast symbols (Options: the on-speed AoA range) |
+| Vertical tape | any reading as a moving tape (Options: range shown, tick spacing, which side the scale is on) |
+| Line | across, up and down or diagonal, any thickness and colour |
+| Picture | your own small PNG (logo, symbol), transparent parts stay see-through |
+
+**Options** (right panel, under the widget's settings): every widget can have a **Background** colour and a coloured **Border**. Values: decimals, a unit after the number, label colour. Tapes: the range shown. Attitude: sky and ground colours, ladder every 5 or 10 degrees, bank scale on or off. Stores: rows at most.
 
 Text uses the game's pixel font; **Text size** Auto fits it to the box, or pick 1 (tiny) to 5 (big).
 
