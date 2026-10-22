@@ -1,7 +1,7 @@
 # 4. Screens (custom MFDs)
 
-A screen is a new display in its own bezel. On the **MiG-29SMT** it can show any of the jet's display pages; on both jets it
-can show the game's tactical display (experimental).
+A screen is a new display in its own bezel. On the **MiG-29SMT** it can show any of the jet's display pages or a page you
+designed yourself ([Page designer](08-page-designer.md)); on both jets it can show the game's tactical display (experimental).
 
 | Page | Shows |
 |---|---|
@@ -10,6 +10,7 @@ can show the game's tactical display (experimental).
 | Stores (SMS) | weapon stations and rounds, countermeasures, target |
 | Standby attitude | small attitude / speed / altitude display |
 | UFCP window | clock and selected weapon |
+| Custom: *your page* | a page you built in the page designer |
 | Tactical display (experimental) | the game's tactical map |
 
 ## Add one
@@ -20,28 +21,35 @@ can show the game's tactical display (experimental).
 ## Size
 
 Type the **Width** and **Height** in centimetres (untick **Keep shape** to change them separately). **Default size for this
-page** copies the size of that page's built-in screen.
+page** copies the size of that page's built-in screen. Text comes out the same size as on the built-in screens, so a small
+screen shows less room, not smaller text.
 
-Text on your screen comes out the same size as on the built-in screen, so a small screen shows less room, not smaller text.
-Pages lay themselves out to fit the shape; very small or very thin screens get cramped.
+## Outline: the outline editor
 
-## Outline
-
-Pick a preset (Rectangle, Rounded, Cut corners, Narrow top, Narrow bottom, Corner right / left, Hexagon, Round) or draw your
-own in the outline box:
+Click the outline picture (or **Edit outline…**) in the right panel. A big editor opens, measured in millimetres:
 
 | To | Do |
 |---|---|
-| move a corner | drag its dot |
-| add a corner | double-click on an edge |
-| remove a corner | right-click its dot (at least 3 stay) |
+| select a corner | click it (it turns yellow) |
+| move it | drag it, or type its **X** / **Y** in mm, or arrow keys: 0.5 mm, Shift 5 mm, Ctrl 0.1 mm |
+| add a corner | double-click on an edge where you want it, or **Add corner** / **A** (halfway along the edge after the selected corner) |
+| remove a corner | **Delete corner** / **Del** (at least 3 stay) |
+| more corners everywhere | **Subdivide edges** (a new corner in the middle of every edge) |
+| round a corner | select it, set **Round radius**, press **Round corner** (nothing selected = all corners) |
+| keep it symmetric | tick **Mirror left / right**: moving a corner moves its partner on the other side. **Make symmetric** copies the left half onto the right. |
+| flip it | **Flip left-right**, **Flip up-down** |
+| zoom / pan | mouse wheel / right-drag; **Zoom to fit** |
+| snap to a grid | **Grid** 1 / 2 / 5 / 10 mm with **Snap corners to the grid** |
+| start from a shape | the preset buttons |
+| undo | **Undo** / Ctrl+Z (inside the editor) |
 
-Screens are always **convex** (no dents), because the pages have to fit inside them. If you drag a corner inwards to make a
-dent, a dashed outline shows your shape and the green shape shows what you will actually get.
+**Done** (or Enter) applies it, **Cancel** (or Esc) throws it away. Dents are fine; an outline that crosses itself turns red
+and cannot be used until you move a corner. When you press Done, the screen's box is fitted round the new outline, so the
+corners stay exactly where you put them in the cockpit.
 
 ## Bezel
 
-- **Bezel**: the frame width round the screen, in mm.
+- **Bezel**: the frame width round the screen, in mm (it follows the outline, dents included).
 - **Stands out**: how far the screen stands proud of the surface, in mm.
 - **Bezel colour**: black or dark grey.
 

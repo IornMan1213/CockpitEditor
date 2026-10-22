@@ -3,7 +3,8 @@
 Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option mods) in your browser, without Blender:
 
 - **Move, turn, resize or hide** any gauge, display, switch panel or knob. Needles, lights and screens keep working.
-- **Add custom screens (MFDs)** of any size and shape, showing any SMT display page or the tactical display.
+- **Add custom screens (MFDs)** of any size and any outline (as many corners as you like, dents allowed), showing any SMT display page, a page of your own, or the tactical display.
+- **Design your own MFD pages** from widgets (attitude, tapes, readings, RWR, stores, engines...) with a pixel-accurate live preview, and show them on any screen, built-in ones included.
 - **Add decals**: STEP HERE, NO STEP, hazard stripes, placards, or your own pictures.
 - **Build & Install** the mod with your changes in one click.
 
@@ -22,6 +23,7 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 5. [Saving, building and installing](docs/05-building-and-installing.md): what is saved where, Build & Install
 6. [Troubleshooting](docs/06-troubleshooting.md)
 7. [How it works](docs/07-how-it-works.md): for developers
+8. [Page designer](docs/08-page-designer.md): your own MFD pages
 
 ## Keys (with something selected)
 
