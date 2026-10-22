@@ -418,6 +418,98 @@ def run_build(jet, quick, install):
         BUILD["running"] = False
 
 
+# ------------------------------------------------------------------------------------------------ cockpit setups (.cpit)
+# A .cpit is one whole cockpit setup that the instruments plugins can switch to in game (Cockpits folder next to the plugin,
+# Configuration Manager > Cockpit layout): the instrument groups' poses, the decals and screens as finished meshes with their
+# pictures, the hidden built-in screens and the MFD pages. "editor" carries the editor's own data so the setup can be opened
+# and changed again (Import).
+CPIT_VERSION = 1
+
+
+def safe_name(name):
+    n = re.sub(r"[^A-Za-z0-9 _.()-]", "", (name or "").strip()).strip(" .")
+    return n[:60] or "Cockpit"
+
+
+def setups_dir(jet):
+    return os.path.join(cockpit_dir(jet), "setups")
+
+
+def game_setups_dir(jet):
+    return os.path.join(JETS[jet]["plugin_dir"], "Cockpits")
+
+
+def read_json(path, default):
+    try:
+        return json.load(open(path, encoding="utf8")) if os.path.exists(path) else default
+    except Exception:
+        return default
+
+
+def b64file(path):
+    return base64.b64encode(open(path, "rb").read()).decode("ascii")
+
+
+def make_cpit(jet, name):
+    cd = cockpit_dir(jet)
+    export(jet)
+    built = read_json(os.path.join(cd, "build", "custom_mesh.json"), {"parts": [], "hide": []})
+    textures = {}
+    for p in built.get("parts", []):
+        tx = p.get("texture")
+        if tx and os.path.exists(os.path.join(cd, "build", tx)):
+            textures[tx] = b64file(os.path.join(cd, "build", tx))
+    layout = read_json(os.path.join(cd, "layout.json"), {"groups": {}})
+    mfd = read_json(os.path.join(cd, "mfd_pages.json"), {"pages": [], "assign": []})
+    custom = load_custom(jet)
+    pictures = {}
+    for d in custom.get("decals", []):
+        f = os.path.join(cd, "decals", d["id"] + ".png")
+        if os.path.exists(f):
+            pictures[d["id"]] = b64file(f)
+    return {"format": "cpit", "version": CPIT_VERSION, "jet": jet, "name": name, "created": time.strftime("%Y-%m-%d %H:%M"),
+            "layout": layout, "parts": built.get("parts", []), "textures": textures, "hide": built.get("hide", []), "mfd": mfd,
+            "editor": {"custom": custom, "pictures": pictures, "layout": layout, "mfd": mfd}}
+
+
+def import_cpit(jet, data):
+    """A .cpit back into the editor (replaces what is there)."""
+    if data.get("format") != "cpit":
+        raise ValueError("not a cockpit setup")
+    if data.get("jet") != jet:
+        raise ValueError("this setup is for the " + JETS.get(data.get("jet"), {}).get("name", "other jet"))
+    ed = data.get("editor")
+    if not ed:
+        raise ValueError("this setup has no editor data (it can be used in game but not opened here)")
+    cd = cockpit_dir(jet)
+    os.makedirs(os.path.join(cd, "decals"), exist_ok=True)
+    for f in os.listdir(os.path.join(cd, "decals")):
+        os.remove(os.path.join(cd, "decals", f))
+    for did, b64 in (ed.get("pictures") or {}).items():
+        did = re.sub(r"[^A-Za-z0-9_-]", "", did)
+        open(os.path.join(cd, "decals", did + ".png"), "wb").write(base64.b64decode(b64))
+    json.dump(ed.get("custom") or {"version": 1, "decals": [], "screens": [], "hide": []}, open(os.path.join(cd, "custom.json"), "w", encoding="utf8"), indent=1)
+    json.dump(ed.get("layout") or {"groups": {}}, open(os.path.join(cd, "layout.json"), "w", encoding="utf8"), indent=1)
+    mfd = ed.get("mfd") or {}
+    mp = os.path.join(cd, "mfd_pages.json")
+    if mfd.get("pages"):
+        json.dump(mfd, open(mp, "w", encoding="utf8"), indent=1)
+    elif os.path.exists(mp):
+        os.remove(mp)
+    return export(jet)
+
+
+def list_setups(jet):
+    out = []
+    for where, d in (("editor", setups_dir(jet)), ("game", game_setups_dir(jet))):
+        if os.path.isdir(d):
+            for f in sorted(os.listdir(d)):
+                if f.lower().endswith(".cpit"):
+                    p = os.path.join(d, f)
+                    out.append({"name": f[:-5], "where": where, "size": os.path.getsize(p), "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(p)))})
+    return out
+
+
 def refresh(jet):
     """Re-make the editor's copy of the cockpit (the work dir) with the repo's blender/cockpit_build.py, e.g. after Claude
     changed the cockpit. Only the work dir is written; the mod's own source folder is only read."""
@@ -518,6 +610,23 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/decal":
                 jet = self.jet(q); did = re.sub(r"[^A-Za-z0-9_-]", "", q.get("id", [""])[0])
                 return self.file(os.path.join(cockpit_dir(jet), "decals", did + ".png"), "image/png")
+            if u.path == "/api/cpit/list":
+                jet = self.jet(q)
+                return self.send(200, {"setups": list_setups(jet), "editor_dir": setups_dir(jet), "game_dir": game_setups_dir(jet)})
+            if u.path == "/api/cpit/download":
+                jet = self.jet(q)
+                where = game_setups_dir(jet) if q.get("where", [""])[0] == "game" else setups_dir(jet)
+                p = os.path.join(where, safe_name(q.get("name", [""])[0]) + ".cpit")
+                if not os.path.exists(p):
+                    return self.send(404, {"error": "no such setup"})
+                body = open(p, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(p)}"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if u.path == "/api/status":
                 return self.send(200, {"running": BUILD["running"], "jet": BUILD["jet"], "ok": BUILD["ok"], "log": BUILD["log"][-20000:],
                                        "game": game_running(), "unity": unity_running()})
@@ -556,6 +665,36 @@ class H(BaseHTTPRequestHandler):
                 elif os.path.exists(mp):
                     os.remove(mp)
                 return self.send(200, {"ok": True, "export": export(jet)})
+            if u.path == "/api/cpit/export":
+                name = safe_name(body.get("name"))
+                data = make_cpit(jet, name)
+                os.makedirs(setups_dir(jet), exist_ok=True)
+                path = os.path.join(setups_dir(jet), name + ".cpit")
+                json.dump(data, open(path, "w", encoding="utf8"))
+                res = {"ok": True, "name": name, "path": path, "installed": None}
+                if body.get("install"):
+                    os.makedirs(game_setups_dir(jet), exist_ok=True)
+                    shutil.copy2(path, game_setups_dir(jet))
+                    res["installed"] = os.path.join(game_setups_dir(jet), name + ".cpit")
+                return self.send(200, res)
+            if u.path == "/api/cpit/import":
+                if body.get("content") is not None:
+                    data = json.loads(body["content"]) if isinstance(body["content"], str) else body["content"]
+                else:
+                    where = game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
+                    data = json.load(open(os.path.join(where, safe_name(body.get("name")) + ".cpit"), encoding="utf8"))
+                return self.send(200, {"ok": True, "export": import_cpit(jet, data)})
+            if u.path == "/api/cpit/install":
+                src = os.path.join(setups_dir(jet), safe_name(body.get("name")) + ".cpit")
+                os.makedirs(game_setups_dir(jet), exist_ok=True)
+                shutil.copy2(src, game_setups_dir(jet))
+                return self.send(200, {"ok": True})
+            if u.path == "/api/cpit/delete":
+                where = game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
+                p = os.path.join(where, safe_name(body.get("name")) + ".cpit")
+                if os.path.exists(p):
+                    os.remove(p)
+                return self.send(200, {"ok": True})
             if u.path == "/api/refresh":
                 if BUILD["running"]:
                     return self.send(409, {"error": "busy: a build or refresh is running"})

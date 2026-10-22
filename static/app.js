@@ -874,7 +874,7 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   else select(null);
 });
 window.addEventListener('keydown', (ev) => {
-  if (outlineEditor.isOpen() || designer.isOpen()) return;   // those windows have their own keys
+  if (outlineEditor.isOpen() || designer.isOpen() || setupsUI.isOpen()) return;   // those windows have their own keys
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (ev.ctrlKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); return; }
   if (typing) return;
@@ -1344,6 +1344,59 @@ async function save() {
     return true;
   } catch (err) { toast('Save failed: ' + err.message, 6000); return false; }
 }
+
+
+// ------------------------------------------------------------------------------------------------ cockpit setups (.cpit)
+const setupsUI = (() => {
+  const open = async () => { $('setupModal').style.display = 'flex'; if (!$('suName').value) $('suName').value = 'My ' + (jet === 'smt' ? 'SMT' : 'MiG-29') + ' cockpit'; $('suMsg').textContent = ''; await list(); };
+  const close = () => { $('setupModal').style.display = 'none'; };
+  async function list() {
+    let r; try { r = await api(`/api/cpit/list?jet=${jet}`); } catch (err) { $('suList').textContent = err.message; return; }
+    const L = $('suList'); L.innerHTML = '';
+    if (!r.setups.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'None yet: export one above.'; L.appendChild(p); }
+    for (const s of r.setups) {
+      const d = document.createElement('div'); d.className = 'item'; d.style.cursor = 'default';
+      d.innerHTML = `<span class="kind" style="background:${s.where === 'game' ? '#5fd38a' : '#4fb3ff'}">${s.where === 'game' ? 'IN GAME' : 'SAVED'}</span><span class="nm"></span><span class="tag" style="color:var(--dim)"></span>
+        <button data-a="open" title="Open it here (replaces what you have)">Open</button>${s.where === 'editor' ? '<button data-a="install" title="Copy it into the game\'s Cockpits folder">To game</button>' : ''}<button data-a="dl" title="Download the file">&#8681;</button><button data-a="del" class="danger" title="Delete">&#10005;</button>`;
+      d.querySelector('.nm').textContent = s.name; d.querySelector('.tag').textContent = s.time;
+      d.querySelectorAll('button').forEach((b) => (b.onclick = () => act(b.dataset.a, s)));
+      L.appendChild(d);
+    }
+    $('suDirs').textContent = `Saved in ${r.editor_dir}. The game reads ${r.game_dir}.`;
+  }
+  async function act(a, s) {
+    try {
+      if (a === 'open') {
+        if (!confirm(`Open "${s.name}"? It replaces the layout, decals, screens and pages you have now (save first if you want to keep them: export them as a setup).`)) return;
+        await api(`/api/cpit/import?jet=${jet}`, { name: s.name, where: s.where });
+        setDirty(false); close(); await loadJet(jet); toast(`Opened "${s.name}"`);
+      } else if (a === 'install') { await api(`/api/cpit/install?jet=${jet}`, { name: s.name }); toast(`"${s.name}" is in the game's Cockpits folder (restart the game to see new files in the list)`, 5000); await list(); }
+      else if (a === 'dl') { window.location = `/api/cpit/download?jet=${jet}&where=${s.where}&name=${encodeURIComponent(s.name)}`; }
+      else if (a === 'del') { if (!confirm(`Delete "${s.name}" (${s.where === 'game' ? 'from the game' : 'saved'})?`)) return; await api(`/api/cpit/delete?jet=${jet}`, { name: s.name, where: s.where }); await list(); }
+    } catch (err) { toast(err.message, 6000); }
+  }
+  $('setupsBtn').onclick = open; $('suClose').onclick = close;
+  $('suExport').onclick = async () => {
+    if (!(await save())) return;
+    try {
+      const r = await api(`/api/cpit/export?jet=${jet}`, { name: $('suName').value, install: $('suInstall').checked });
+      $('suMsg').textContent = `Exported "${r.name}.cpit"` + (r.installed ? ' and put it in the game' : '');
+      await list();
+    } catch (err) { $('suMsg').textContent = 'Export failed: ' + err.message; }
+  };
+  $('suOpenFile').onclick = () => { $('suFile').value = ''; $('suFile').click(); };
+  $('suFile').onchange = () => {
+    const file = $('suFile').files[0]; if (!file) return;
+    const rd = new FileReader();
+    rd.onload = async () => {
+      if (!confirm(`Open "${file.name}"? It replaces what you have now.`)) return;
+      try { await api(`/api/cpit/import?jet=${jet}`, { content: rd.result }); setDirty(false); close(); await loadJet(jet); toast(`Opened "${file.name}"`); }
+      catch (err) { toast('Could not open it: ' + err.message, 6000); }
+    };
+    rd.readAsText(file);
+  };
+  return { isOpen: () => $('setupModal').style.display === 'flex' };
+})();
 
 // ------------------------------------------------------------------------------------------------ build / refresh / log
 let polling = null;

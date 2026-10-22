@@ -94,6 +94,7 @@
   <select id="jet" title="Which jet's cockpit"></select>
   <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
   <button id="save" title="Save (Ctrl+S)">Save</button>
+  <button id="setupsBtn" title="Cockpit setups (.cpit): export this cockpit, switch to it in game, open saved ones">Setups</button>
   <span class="grow"></span>
   <span id="dirty" class="pill">saved</span>
   <span id="game" class="pill">game: ?</span>
@@ -161,6 +162,20 @@
   <pre id="log"></pre>
 </div>
 
+<div id="setupModal" class="modal"><div class="mcard" style="width:min(820px,96vw);height:auto;max-height:92vh">
+  <div class="mhead"><strong>Cockpit setups (.cpit)</strong><span style="flex:1"></span><button id="suClose" class="primary">Close</button></div>
+  <div style="padding:14px 18px;overflow:auto">
+    <p class="hint">A setup is this whole cockpit in one file: moved instruments, decals, screens and MFD pages. Put .cpit files in the <b>Cockpits</b> folder next to the jet's plugin and pick one in game: <b>Configuration Manager (F1) &gt; Cockpit &gt; Cockpit layout</b>, or set a key to cycle them. A file that cannot be used falls back to the default cockpit.</p>
+    <h2>Export this cockpit</h2>
+    <div class="row"><label>Name</label><input type="text" id="suName" placeholder="My cockpit"></div>
+    <div class="check"><input type="checkbox" id="suInstall" checked><label for="suInstall">Also put it in the game's Cockpits folder</label></div>
+    <div class="row"><button id="suExport" class="primary">Export .cpit</button><span class="hint" id="suMsg" style="margin:0 0 0 10px"></span></div>
+    <h2>Saved setups</h2>
+    <div class="list" id="suList"></div>
+    <div class="row" style="margin-top:10px"><button id="suOpenFile">Open a .cpit file&hellip;</button><input type="file" id="suFile" accept=".cpit" style="display:none"></div>
+    <p class="hint" id="suDirs"></p>
+  </div>
+</div></div>
 <div id="pageModal" class="modal"><div class="mcard" style="width:min(1400px,98vw);height:min(900px,96vh)">
   <div class="mhead"><strong>Page designer</strong>
     <input type="text" id="pdName" style="width:180px;margin-left:10px" title="Page name">
