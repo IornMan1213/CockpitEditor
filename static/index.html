@@ -103,7 +103,7 @@
 </div>
 
 <div id="left">
-  <div class="tabs"><button data-tab="layout" class="on">Layout</button><button data-tab="add">Add</button><button data-tab="mine">My items</button></div>
+  <div class="tabs" style="grid-template-columns: repeat(4, 1fr)"><button data-tab="layout" class="on">Layout</button><button data-tab="add">Add</button><button data-tab="mine">My items</button><button data-tab="pages">Pages</button></div>
 
   <div class="tab on" id="tab-layout">
     <h2>Instruments, displays, panels</h2>
@@ -128,6 +128,15 @@
     <p class="hint" id="screenHint"></p>
   </div>
 
+  <div class="tab" id="tab-pages">
+    <h2>MFD pages</h2>
+    <p class="hint">Design your own display pages from widgets (attitude, tapes, readings, RWR, stores...). Show them on your screens (Add &gt; Screen, or a screen's Shows) or on the built-in screens below.</p>
+    <div class="row"><select id="newPageTpl"><option value="blank">Blank page</option><option value="flight">Flight (PFD style)</option><option value="systems">Systems (engines, fuel, signature)</option><option value="combat">Combat (RWR, stores, warnings)</option></select><button id="newPageBtn" class="primary">New</button></div>
+    <div class="list" id="pageList"></div>
+    <p class="hint" id="noPages">No pages yet.</p>
+    <h2>Built-in screens show</h2>
+    <div id="assignBox"></div>
+  </div>
   <div class="tab" id="tab-mine">
     <h2>Your decals and screens</h2>
     <div class="list" id="list"></div>
@@ -152,6 +161,28 @@
   <pre id="log"></pre>
 </div>
 
+<div id="pageModal" class="modal"><div class="mcard" style="width:min(1400px,98vw);height:min(900px,96vh)">
+  <div class="mhead"><strong>Page designer</strong>
+    <input type="text" id="pdName" style="width:180px;margin-left:10px" title="Page name">
+    <label class="hint" style="margin:0 0 0 10px">Background</label><input type="color" id="pdBg">
+    <label class="hint" style="margin:0 0 0 10px">Preview on</label><select id="pdSize" style="width:auto"></select>
+    <label class="hint" style="margin:0 0 0 10px">Redraws / s</label><input type="number" id="pdRate" min="1" max="30" step="1" style="width:60px">
+    <label class="hint" style="margin:0 0 0 10px"><input type="checkbox" id="pdAnim" checked> live data</label>
+    <span style="flex:1"></span><button id="pdUndo" title="Ctrl+Z">Undo</button><button id="pdDone" class="primary">Done</button></div>
+  <div class="mbody">
+    <div class="mside" style="border-left:0;border-right:1px solid var(--line);width:230px">
+      <h2>Add a widget</h2>
+      <div class="list" id="pdPalette"></div>
+    </div>
+    <div id="pdStage" style="flex:1;min-width:0;position:relative;overflow:auto;background:#0b0e11;display:flex;align-items:center;justify-content:center">
+      <div id="pdWrap" style="position:relative">
+        <canvas id="pdCanvas" style="image-rendering:pixelated;display:block;flex:none;background:none;cursor:default"></canvas>
+        <canvas id="pdOverlay" tabindex="0" style="position:absolute;inset:0;outline:none;cursor:default;background:transparent;flex:none"></canvas>
+      </div>
+    </div>
+    <div class="mside" id="pdProps"></div>
+  </div>
+</div></div>
 <div id="outlineModal" class="modal"><div class="mcard">
   <div class="mhead"><strong>Screen outline</strong><span class="hint" id="olInfo" style="margin:0 0 0 12px"></span><span style="flex:1"></span>
     <button id="olUndo" title="Ctrl+Z">Undo</button><button id="olCancel">Cancel</button><button id="olDone" class="primary">Done</button></div>

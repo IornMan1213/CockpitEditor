@@ -453,6 +453,12 @@ def install_files(jet, nobp):
     dll = os.path.join(j["build_out"], j["instruments_dll"])
     if os.path.exists(dll):
         shutil.copy2(dll, j["plugin_dir"])
+    pages = os.path.join(j["build_out"], "mfd_pages.json")   # custom MFD pages, read by the plugin from its own folder
+    old = os.path.join(j["plugin_dir"], "mfd_pages.json")
+    if os.path.exists(pages):
+        shutil.copy2(pages, j["plugin_dir"])
+    elif os.path.exists(old):
+        os.remove(old)
     log(f"== installed {os.path.basename(nobp)} into {j['plugin_dir']}")
 
 
@@ -506,7 +512,9 @@ class H(BaseHTTPRequestHandler):
                 jet = self.jet(q)
                 lp = os.path.join(cockpit_dir(jet), "layout.json")
                 layout = json.load(open(lp, encoding="utf8")) if os.path.exists(lp) else {"groups": {}}
-                return self.send(200, {"custom": load_custom(jet), "builtin": builtin_screens(jet), "layout": layout})
+                mp = os.path.join(cockpit_dir(jet), "mfd_pages.json")
+                mfd = json.load(open(mp, encoding="utf8")) if os.path.exists(mp) else {"pages": [], "assign": []}
+                return self.send(200, {"custom": load_custom(jet), "builtin": builtin_screens(jet), "layout": layout, "mfd": mfd})
             if u.path == "/api/decal":
                 jet = self.jet(q); did = re.sub(r"[^A-Za-z0-9_-]", "", q.get("id", [""])[0])
                 return self.file(os.path.join(cockpit_dir(jet), "decals", did + ".png"), "image/png")
@@ -540,6 +548,13 @@ class H(BaseHTTPRequestHandler):
                 json.dump(custom, open(os.path.join(cd, "custom.json"), "w", encoding="utf8"), indent=1)
                 # moved / turned / scaled / hidden instrument groups (tools/cockpit_layout.py applies them before the Unity build)
                 json.dump(body.get("layout", {"groups": {}}), open(os.path.join(cd, "layout.json"), "w", encoding="utf8"), indent=1)
+                # custom MFD pages (the SMT plugin reads mfd_pages.json from its own folder; the build ships it there)
+                mfd = body.get("mfd") or {"pages": [], "assign": []}
+                mp = os.path.join(cd, "mfd_pages.json")
+                if mfd.get("pages"):
+                    json.dump({"pages": mfd["pages"], "assign": mfd.get("assign", [])}, open(mp, "w", encoding="utf8"), indent=1)
+                elif os.path.exists(mp):
+                    os.remove(mp)
                 return self.send(200, {"ok": True, "export": export(jet)})
             if u.path == "/api/refresh":
                 if BUILD["running"]:

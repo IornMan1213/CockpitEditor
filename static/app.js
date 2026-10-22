@@ -7,6 +7,7 @@
 //   group   one of the cockpit's own instruments / displays / panels (cockpit_mesh.json "groups"), moved by a transform
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Canvas, drawPage, sampleState, WIDGETS, FIELDS } from './mfd.js';
 
 const $ = (id) => document.getElementById(id);
 const toU = (v) => [+v.x.toFixed(5), +v.y.toFixed(5), +(-v.z).toFixed(5)];
@@ -177,18 +178,18 @@ function offsetPoly(poly, d) {
 
 // ------------------------------------------------------------------------------------------------ undo
 function snapshot() {
-  return JSON.stringify({ elements: elements.map(serialise), hide, groups: groups.map((g) => ({ id: g.id, pos: toU(g.pos), normal: toU(g.normal), baseUp: toU(g.baseUp), rot: g.rot, scale: g.scale, hidden: g.hidden })) });
+  return JSON.stringify({ mfd, elements: elements.map(serialise), hide, groups: groups.map((g) => ({ id: g.id, pos: toU(g.pos), normal: toU(g.normal), baseUp: toU(g.baseUp), rot: g.rot, scale: g.scale, hidden: g.hidden })) });
 }
 function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 100) undoStack.shift(); setDirty(true); }
 function undo() {
   if (!undoStack.length) return toast('Nothing to undo');
   const s = JSON.parse(undoStack.pop());
   const selId = selected?.id;
-  clearElements(); hide = s.hide;
+  clearElements(); hide = s.hide; if (s.mfd) mfd = s.mfd;
   s.elements.forEach((e) => addElement(deserialise(e), false));
   for (const gs of s.groups) { const g = groups.find((x) => x.id === gs.id); if (g) { Object.assign(g, { pos: fromU(gs.pos), normal: fromU(gs.normal), baseUp: fromU(gs.baseUp), rot: gs.rot, scale: gs.scale, hidden: gs.hidden }); applyGroup(g); } }
   selected = elements.find((e) => e.id === selId) || groups.find((g) => g.id === selId) || null;
-  renderAll(); updateBuiltinTint(); setDirty(true);
+  renderAll(); updateBuiltinTint(); renderPagesTab(); setDirty(true);
 }
 
 // ------------------------------------------------------------------------------------------------ drawing decals and screens
@@ -243,6 +244,10 @@ async function drawDecal(e) {
   return cv;
 }
 function drawScreen(e) {
+  if (e.page && e.page.startsWith('c_')) {   // one of your pages: drawn as the game will
+    const pg = mfd.pages.find((x) => 'c_' + x.id === e.page);
+    if (pg) { const [w, h] = pagePx(null, e); const c = new Canvas(w, h); drawPage(c, sampleState(12), pg); const cv = document.createElement('canvas'); cv.width = w; cv.height = h; c.draw(cv.getContext('2d')); return cv; }
+  }
   const long = 512, a = e.w / e.h;
   const cv = document.createElement('canvas');
   cv.width = Math.round(a >= 1 ? long : long * a); cv.height = Math.round(a >= 1 ? long / a : long);
@@ -445,7 +450,7 @@ function renderProps() {
     h += field('Corner round', `<input type="range" id="p_radius" min="0" max="25" step="1">`);
     h += `<div class="row"><label>Picture</label><button id="p_img">${s.image ? 'Replace' : 'Add'}&hellip;</button>${s.image ? '<button id="p_imgx" class="danger">Remove</button>' : ''}</div>`;
   } else {
-    h += field('Shows', `<select id="p_page">${jets[jet].pages.map((p) => `<option value="${p}"${p === e.page ? ' selected' : ''}>${PAGE_NAMES[p] || p}</option>`).join('')}</select>`);
+    h += field('Shows', `<select id="p_page">${pageOptions(e.page)}</select>`) + `<div class="row"><button id="p_editPage" style="width:100%">Design a page for this screen&hellip;</button></div>`;
     h += '<h2>Outline</h2>';
     h += `<div class="shapes">${Object.entries(SHAPES).map(([k, v]) => `<button data-shape="${k}" title="${v.name}">${v.name}</button>`).join('')}</div>`;
     h += `<canvas id="shapePreview" class="shapePreview" title="Click to edit the outline"></canvas>
@@ -484,7 +489,13 @@ function renderProps() {
     if ($('p_imgx')) $('p_imgx').onclick = () => { pushUndo(); s.image = null; changed(e); renderProps(); };
     $('p_fit').onclick = () => { pushUndo(); fitHeight(e); changed(e); renderProps(); };
   } else {
-    bind('p_page', (el) => (el.value = e.page), (el) => (e.page = el.value), true, 'change');
+    fillPageNames($('p_page'));
+    bind('p_page', (el) => (el.value = e.page), (el) => { e.page = el.value; renderPagesTab(); }, true, 'change');
+    $('p_editPage').onclick = () => {
+      let pg = e.page.startsWith('c_') ? mfd.pages.find((x) => 'c_' + x.id === e.page) : null;
+      if (!pg) { pushUndo(); pg = { id: newPageId(), name: e.name + ' page', bg: '#06080a', rate: 10, widgets: PAGE_TEMPLATES.flight() }; mfd.pages.push(pg); e.page = 'c_' + pg.id; renderPagesTab(); }
+      designer.open(pg);
+    };
     bind('p_bezel', (el) => (el.value = Math.round((e.bezel ?? 0.008) * 1000)), (el) => (e.bezel = Math.max(0, +el.value) / 1000));
     bind('p_depth', (el) => (el.value = Math.round((e.depth ?? 0.008) * 1000)), (el) => (e.depth = Math.max(0, +el.value) / 1000));
     bind('p_bezelColor', (el) => (el.value = e.bezelColor || 'black'), (el) => (e.bezelColor = el.value), true, 'change');
@@ -863,7 +874,7 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
   else select(null);
 });
 window.addEventListener('keydown', (ev) => {
-  if (outlineEditor.isOpen()) return;   // the outline editor has its own keys
+  if (outlineEditor.isOpen() || designer.isOpen()) return;   // those windows have their own keys
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (ev.ctrlKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); return; }
   if (typing) return;
@@ -931,7 +942,7 @@ $('newShape').innerHTML = Object.entries(SHAPES).map(([k, v]) => `<option value=
 $('addScreen').onclick = () => {
   const page = $('newPage').value;
   const b = builtinSizes[page] && ['stby', 'ufc'].includes(page) ? builtinSizes[page] : page === 'tac' ? { w: 0.168, h: 0.08 } : { w: 0.14, h: 0.18 };
-  startPlacing({ make: { id: uid('s'), type: 'screen', name: PAGE_NAMES[page] || page, page, w: b.w, h: b.h, shape: SHAPES[$('newShape').value].pts.map((p) => [...p]), bezel: 0.008, depth: 0.008, bezelColor: 'black' } });
+  startPlacing({ make: { id: uid('s'), type: 'screen', name: pageLabel(page), page, w: b.w, h: b.h, shape: SHAPES[$('newShape').value].pts.map((p) => [...p]), bezel: 0.008, depth: 0.008, bezelColor: 'black' } });
 };
 function renderBuiltins() {
   const B = $('builtins'); B.innerHTML = '';
@@ -948,6 +959,290 @@ function renderBuiltins() {
 function updateBuiltinTint() {
   for (const [name, m] of Object.entries(builtinScreenMeshes)) m.material.color.set(hide.includes(name) ? 0x050505 : 0x123f24);
 }
+
+
+// ------------------------------------------------------------------------------------------------ custom MFD pages
+// mfd = { pages: [{ id, name, bg, rate, widgets: [...] }], assign: [{ screen, page }] }, saved as cockpit\mfd_pages.json and
+// shipped next to the SMT instruments plugin, which draws them (Widgets.cs). The preview here uses the same canvas and font.
+let mfd = { pages: [], assign: [] };
+let builtinShapes = {};   // built-in screen -> outline in 0..1 (u right, v up), worked out as the plugin does
+function screenOutline(p) {
+  const v = []; for (let i = 0; i < p.vertices.length; i += 3) v.push([p.vertices[i], p.vertices[i + 1], p.vertices[i + 2]]);
+  const n = [p.normals[0], p.normals[1], p.normals[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const norm = (a) => { const l = Math.hypot(...a) || 1; return a.map((x) => x / l); };
+  let right = [1, 0, 0], best = -1;
+  for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) {
+    const d = [v[j][0] - v[i][0], v[j][1] - v[i][1], v[j][2] - v[i][2]], L = Math.hypot(...d); if (L < 1e-8) continue;
+    const h = Math.abs(d[0] / L) - Math.abs(d[1] / L); if (h > best) { best = h; right = d.map((x) => x / L); }
+  }
+  if (right[0] < 0) right = right.map((x) => -x);
+  const nn = norm(n), rd = dot(right, nn); right = norm(right.map((x, k) => x - nn[k] * rd));
+  let up = norm([right[1] * nn[2] - right[2] * nn[1], right[2] * nn[0] - right[0] * nn[2], right[0] * nn[1] - right[1] * nn[0]]);
+  if (up[1] < 0) up = up.map((x) => -x);
+  const uv = v.map((q) => [dot(q, right), dot(q, up)]);
+  const u0 = Math.min(...uv.map((q) => q[0])), u1 = Math.max(...uv.map((q) => q[0])), w0 = Math.min(...uv.map((q) => q[1])), w1 = Math.max(...uv.map((q) => q[1]));
+  return hull(uv.map(([a, b]) => [(a - u0) / (u1 - u0 || 1), (b - w0) / (w1 - w0 || 1)]));
+}
+const BUILTIN_PX = { pfd: 320, eng: 320, sms: 400, stby: 120, ufc: 250 };
+function pageLabel(p) {
+  if (p && p.startsWith('c_')) { const pg = mfd.pages.find((x) => 'c_' + x.id === p); return 'Custom: ' + (pg ? pg.name : p.slice(2) + ' (missing)'); }
+  return PAGE_NAMES[p] || p;
+}
+function pageOptions(sel) {
+  const std = jets[jet].pages.map((p) => `<option value="${p}"${p === sel ? ' selected' : ''}>${PAGE_NAMES[p] || p}</option>`);
+  const cus = mfd.pages.map((pg) => `<option value="c_${pg.id}"${'c_' + pg.id === sel ? ' selected' : ''}></option>`);
+  return std.join('') + (cus.length ? `<optgroup label="Your pages">${cus.join('')}</optgroup>` : '');
+}
+function fillPageNames(select) {   // custom page names set as text (they are typed by the user)
+  select.querySelectorAll('option[value^="c_"]').forEach((o) => { const pg = mfd.pages.find((x) => 'c_' + x.id === o.value); o.textContent = 'Custom: ' + (pg ? pg.name : o.value); });
+}
+function pagePx(screenKind, e) {
+  // the texture size the plugin gives a page on a screen (see ScreenDriver.Add): built-in widths, custom at the PFD's density
+  const b = builtinSizes[screenKind];
+  if (b && BUILTIN_PX[screenKind]) { const w = BUILTIN_PX[screenKind]; return [w, Math.max(16, Math.round(w * b.h / b.w))]; }
+  const ppm = builtinSizes.pfd ? 320 / builtinSizes.pfd.w : 2000;
+  if (e) { const w = Math.max(64, Math.min(768, Math.round(ppm * e.w))); return [w, Math.max(16, Math.round(w * e.h / e.w))]; }
+  return [320, 480];
+}
+function newPageId() { let i = 1; while (mfd.pages.some((p) => p.id === 'p' + i)) i++; return 'p' + i; }
+function W_(type, x, y, w, h, extra = {}) { return { type, x, y, w, h, field: '', label: '', text: '', color: '', align: 'left', size: 0, thick: 2, frame: false, fill: false, ...extra }; }
+const PAGE_TEMPLATES = {
+  blank: () => [],
+  flight: () => [W_('heading_tape', 0.04, 0.02, 0.92, 0.11), W_('attitude', 0.04, 0.15, 0.92, 0.45), W_('speed_tape', 0.04, 0.15, 0.2, 0.45), W_('alt_tape', 0.76, 0.15, 0.2, 0.45),
+    W_('value', 0.04, 0.63, 0.45, 0.09, { field: 'mach', frame: true }), W_('value', 0.51, 0.63, 0.45, 0.09, { field: 'g', frame: true }),
+    W_('value', 0.04, 0.74, 0.45, 0.09, { field: 'aoa', frame: true }), W_('value', 0.51, 0.74, 0.45, 0.09, { field: 'vs', frame: true }),
+    W_('clock', 0.04, 0.86, 0.92, 0.08, { color: '#3cd2e6' }), W_('warnings', 0.25, 0.45, 0.5, 0.12)],
+  systems: () => [W_('signature', 0.03, 0.03, 0.94, 0.14, { frame: true }), W_('engines', 0.03, 0.2, 0.94, 0.22, { frame: true }), W_('fuel', 0.03, 0.45, 0.94, 0.14, { frame: true }),
+    W_('value', 0.03, 0.62, 0.45, 0.09, { field: 'hyd', frame: true }), W_('value', 0.52, 0.62, 0.45, 0.09, { field: 'oxy', frame: true }), W_('cautions', 0.03, 0.74, 0.94, 0.24)],
+  combat: () => [W_('rwr', 0.08, 0.02, 0.84, 0.42), W_('warnings', 0.2, 0.44, 0.6, 0.1), W_('stores', 0.03, 0.55, 0.6, 0.42, { frame: true }), W_('cms', 0.66, 0.55, 0.32, 0.25), W_('target', 0.66, 0.8, 0.32, 0.18)],
+};
+$('newPageBtn').onclick = () => {
+  pushUndo();
+  const tpl = $('newPageTpl').value, id = newPageId();
+  const pg = { id, name: { blank: 'My page', flight: 'My flight page', systems: 'My systems page', combat: 'My combat page' }[tpl] + ' ' + id.slice(1), bg: '#06080a', rate: 10, widgets: PAGE_TEMPLATES[tpl]() };
+  mfd.pages.push(pg); renderPagesTab(); designer.open(pg);
+};
+function renderPagesTab() {
+  const box = $('tab-pages'); if (!box) return;
+  const smt = jets[jet]?.builtin?.length > 0;
+  $('pageList').innerHTML = ''; $('noPages').style.display = mfd.pages.length ? 'none' : 'block';
+  $('newPageBtn').disabled = !smt;
+  if (!smt) { $('noPages').textContent = 'The MiG-29 (9.12) has no plugin screens: custom pages are for the MiG-29SMT.'; $('assignBox').innerHTML = ''; return; }
+  $('noPages').textContent = 'No pages yet: pick a starting point above and press New.';
+  for (const pg of mfd.pages) {
+    const used = elements.filter((e) => e.type === 'screen' && e.page === 'c_' + pg.id).length + mfd.assign.filter((a) => a.page === pg.id).length;
+    const d = document.createElement('div'); d.className = 'item';
+    d.innerHTML = `<span class="kind" style="background:#9b7bff">PAGE</span><span class="nm"></span><span class="tag"></span><button class="eye" title="Duplicate">&#10697;</button><button class="eye" title="Delete" style="color:var(--bad)">&#10005;</button>`;
+    d.querySelector('.nm').textContent = pg.name; d.querySelector('.tag').textContent = used ? `on ${used}` : '';
+    const [dup, del] = d.querySelectorAll('button');
+    dup.onclick = (ev) => { ev.stopPropagation(); pushUndo(); const c = JSON.parse(JSON.stringify(pg)); c.id = newPageId(); c.name = pg.name + ' copy'; mfd.pages.push(c); renderPagesTab(); };
+    del.onclick = (ev) => {
+      ev.stopPropagation();
+      if (used && !confirm(`"${pg.name}" is shown on ${used} screen(s). Delete it anyway? Those screens go back to a standard page.`)) return;
+      pushUndo(); mfd.pages = mfd.pages.filter((x) => x !== pg); mfd.assign = mfd.assign.filter((a) => a.page !== pg.id);
+      for (const e of elements) if (e.type === 'screen' && e.page === 'c_' + pg.id) { e.page = jets[jet].pages[0]; buildPreview(e); }
+      renderPagesTab(); renderProps();
+    };
+    d.onclick = () => designer.open(pg);
+    $('pageList').appendChild(d);
+  }
+  const np = $('newPage'), keep = np.value; np.innerHTML = pageOptions(keep); fillPageNames(np); if (keep) np.value = keep;
+  const A = $('assignBox'); A.innerHTML = '';
+  for (const s of jets[jet].builtin) {
+    const cur = mfd.assign.find((a) => a.screen === s);
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label></label><select><option value="">Standard</option>${mfd.pages.map((pg) => `<option value="${pg.id}"></option>`).join('')}</select>`;
+    row.querySelector('label').textContent = { pfd: 'Left display', eng: 'Right display', sms: 'Stores (centre)', stby: 'Standby', ufc: 'UFCP window' }[s] || s;
+    const sel = row.querySelector('select');
+    sel.querySelectorAll('option[value]').forEach((o) => { const pg = mfd.pages.find((x) => x.id === o.value); if (pg) o.textContent = pg.name; });
+    sel.value = cur ? cur.page : '';
+    sel.onchange = () => { pushUndo(); mfd.assign = mfd.assign.filter((a) => a.screen !== s); if (sel.value) mfd.assign.push({ screen: s, page: sel.value }); renderPagesTab(); };
+    A.appendChild(row);
+  }
+}
+
+// the page designer window
+const designer = (() => {
+  const cv = $('pdCanvas'), ov = $('pdOverlay');
+  let pg = null, sel = -1, zoom = 1, pxW = 320, pxH = 480, t0 = performance.now(), anim = 0, drag = null, stack = [];
+  const save = () => { stack.push(JSON.stringify({ widgets: pg.widgets, sel })); if (stack.length > 200) stack.shift(); setDirty(true); };
+  function sizes() {
+    const out = [];
+    for (const s of jets[jet].builtin) if (builtinSizes[s]) { const [w, h] = pagePx(s); out.push([`builtin:${s}`, `${{ pfd: 'Left display', eng: 'Right display', sms: 'Stores (centre)', stby: 'Standby', ufc: 'UFCP window' }[s] || s} (${w}×${h})`, w, h]); }
+    for (const e of elements.filter((x) => x.type === 'screen')) { const [w, h] = pagePx(null, e); out.push([`screen:${e.id}`, `${e.name} (${w}×${h})`, w, h]); }
+    out.push(['free:320x480', 'Tall 320×480', 320, 480], ['free:480x320', 'Wide 480×320', 480, 320], ['free:320x320', 'Square 320×320', 320, 320]);
+    return out;
+  }
+  function fitZoom() {
+    const st = $('pdStage').getBoundingClientRect();
+    zoom = Math.max(0.5, Math.min((st.width - 40) / pxW, (st.height - 40) / pxH));
+    const dpr = devicePixelRatio || 1;
+    cv.width = pxW; cv.height = pxH; cv.style.width = pxW * zoom + 'px'; cv.style.height = pxH * zoom + 'px';
+    ov.width = Math.round(pxW * zoom * dpr); ov.height = Math.round(pxH * zoom * dpr); ov.style.width = pxW * zoom + 'px'; ov.style.height = pxH * zoom + 'px';
+  }
+  function render() {
+    if (!pg) return;
+    const t = $('pdAnim').checked ? (performance.now() - t0) / 1000 : 12;
+    const c = new Canvas(pxW, pxH); drawPage(c, sampleState(t), pg); c.draw(cv.getContext('2d'));
+    const g = ov.getContext('2d'), k = ov.width / pxW;
+    g.clearRect(0, 0, ov.width, ov.height);
+    const sh = maskShape();
+    if (sh && sh.length >= 3) {   // grey out what lies outside the screen's outline (not shown in the game)
+      g.beginPath(); g.rect(0, 0, ov.width, ov.height);
+      sh.forEach(([u, v], i) => { const X = u * ov.width, Y = (1 - v) * ov.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath();
+      g.fillStyle = 'rgba(11,14,17,0.78)'; g.fill('evenodd');
+      g.beginPath(); sh.forEach(([u, v], i) => { const X = u * ov.width, Y = (1 - v) * ov.height; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath();
+      g.strokeStyle = 'rgba(232,185,49,0.6)'; g.lineWidth = 1.5; g.setLineDash([6, 4]); g.stroke(); g.setLineDash([]);
+    }
+    pg.widgets.forEach((w, i) => {
+      const x = w.x * pxW * k, y = w.y * pxH * k, ww = w.w * pxW * k, hh = w.h * pxH * k;
+      g.strokeStyle = i === sel ? '#e8b931' : 'rgba(79,179,255,0.35)'; g.lineWidth = i === sel ? 2 : 1; g.setLineDash(i === sel ? [] : [4, 4]);
+      g.strokeRect(x + 0.5, y + 0.5, ww, hh); g.setLineDash([]);
+      if (i === sel) { g.fillStyle = '#e8b931'; for (const [hx, hy] of handles(w, k)) g.fillRect(hx - 5, hy - 5, 10, 10); }
+    });
+  }
+  function maskShape() {   // the previewed screen's outline in 0..1 (u right, v up), or null for a plain rectangle
+    const key = $('pdSize').value || '';
+    if (key.startsWith('builtin:')) return builtinShapes[key.slice(8)] || null;
+    if (key.startsWith('screen:')) { const e = elements.find((x) => x.id === key.slice(7)); if (e) return simpleCcw(e.shape || SHAPES.rect.pts).map(([x, y]) => [x + 0.5, y + 0.5]); }
+    return null;
+  }
+  function handles(w, k) {
+    const x0 = w.x * pxW * k, y0 = w.y * pxH * k, x1 = (w.x + w.w) * pxW * k, y1 = (w.y + w.h) * pxH * k, xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+    return [[x0, y0], [xm, y0], [x1, y0], [x1, ym], [x1, y1], [xm, y1], [x0, y1], [x0, ym]];
+  }
+  function loop() { if (!pg) return; render(); anim = requestAnimationFrame(loop); }
+  const at = (ev) => { const r = ov.getBoundingClientRect(), k = ov.width / r.width; return [(ev.clientX - r.left) * k, (ev.clientY - r.top) * k]; };
+  ov.addEventListener('pointerdown', (ev) => {
+    ov.focus();
+    const [X, Y] = at(ev), k = ov.width / pxW;
+    if (sel >= 0) { const hi = handles(pg.widgets[sel], k).findIndex(([hx, hy]) => Math.abs(hx - X) < 8 && Math.abs(hy - Y) < 8); if (hi >= 0) { save(); drag = { mode: hi, X, Y, w0: { ...pg.widgets[sel] } }; ov.setPointerCapture(ev.pointerId); return; } }
+    let hit = -1;   // topmost widget under the pointer (drawn last = on top)
+    for (let i = pg.widgets.length - 1; i >= 0; i--) { const w = pg.widgets[i]; if (X >= w.x * pxW * k && X <= (w.x + w.w) * pxW * k && Y >= w.y * pxH * k && Y <= (w.y + w.h) * pxH * k) { hit = i; break; } }
+    sel = hit; props();
+    if (hit >= 0) { save(); drag = { mode: 'move', X, Y, w0: { ...pg.widgets[hit] } }; ov.setPointerCapture(ev.pointerId); }
+  });
+  ov.addEventListener('pointermove', (ev) => {
+    const [X, Y] = at(ev), k = ov.width / pxW;
+    if (!drag) {   // cursor hint over handles
+      let cur = 'default';
+      if (sel >= 0) { const hi = handles(pg.widgets[sel], k).findIndex(([hx, hy]) => Math.abs(hx - X) < 8 && Math.abs(hy - Y) < 8); if (hi >= 0) cur = ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize'][hi]; }
+      ov.style.cursor = cur; return;
+    }
+    const w = pg.widgets[sel], o = drag.w0, dx = Math.round((X - drag.X) / k) / pxW, dy = Math.round((Y - drag.Y) / k) / pxH;
+    const minW = 4 / pxW, minH = 4 / pxH;
+    if (drag.mode === 'move') { w.x = o.x + dx; w.y = o.y + dy; }
+    else {
+      const m = drag.mode, L = [0, 6, 7].includes(m), Rr = [2, 3, 4].includes(m), T = [0, 1, 2].includes(m), B = [4, 5, 6].includes(m);
+      if (L) { w.x = Math.min(o.x + dx, o.x + o.w - minW); w.w = o.x + o.w - w.x; }
+      if (Rr) w.w = Math.max(minW, o.w + dx);
+      if (T) { w.y = Math.min(o.y + dy, o.y + o.h - minH); w.h = o.y + o.h - w.y; }
+      if (B) w.h = Math.max(minH, o.h + dy);
+    }
+    props(true);
+  });
+  ov.addEventListener('pointerup', () => { drag = null; });
+  ov.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' || ev.key === 'Enter') { ev.stopPropagation(); close(); return; }
+    if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+    if (sel < 0) return;
+    const w = pg.widgets[sel], st = ev.shiftKey ? 10 : 1;
+    const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[ev.key];
+    if (d) { ev.preventDefault(); save(); if (ev.altKey) { w.w = Math.max(4 / pxW, w.w + d[0] / pxW); w.h = Math.max(4 / pxH, w.h + d[1] / pxH); } else { w.x += d[0] / pxW; w.y += d[1] / pxH; } props(true); }
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); del(); }
+    else if (ev.ctrlKey && ev.key.toLowerCase() === 'd') { ev.preventDefault(); dup(); }
+  });
+  function undo() { if (!stack.length) return; const s = JSON.parse(stack.pop()); pg.widgets = s.widgets; sel = s.sel; props(); }
+  function del() { if (sel < 0) return; save(); pg.widgets.splice(sel, 1); sel = -1; props(); }
+  function dup() { if (sel < 0) return; save(); const c = { ...pg.widgets[sel], x: pg.widgets[sel].x + 0.03, y: pg.widgets[sel].y + 0.03 }; pg.widgets.push(c); sel = pg.widgets.length - 1; props(); }
+  function props(numbersOnly) {
+    const P = $('pdProps');
+    if (sel < 0 || !pg.widgets[sel]) {
+      P.innerHTML = `<h2>Widget</h2><p class="hint">Click a widget on the page to edit it, or add one from the left.</p>
+        <h2>Keys</h2><p class="hint">Drag to move, drag the yellow squares to resize. Arrows move 1 px (Shift 10 px), Alt+arrows resize. Del deletes, Ctrl+D duplicates, Ctrl+Z undoes. Widgets drawn later sit on top: use Bring to front / Send to back.</p>`;
+      return;
+    }
+    const w = pg.widgets[sel], meta = WIDGETS[w.type] || { name: w.type };
+    const pct = (v) => (v * 100).toFixed(1);
+    if (numbersOnly && $('pd_x')) { $('pd_x').value = pct(w.x); $('pd_y').value = pct(w.y); $('pd_w').value = pct(w.w); $('pd_h').value = pct(w.h); $('pd_px').textContent = pxText(w); return; }
+    const hasField = w.type === 'value' || w.type === 'bar';
+    let h = `<h2>${meta.name}</h2>
+      ${field('Left', `<input type="number" id="pd_x" step="0.5">`, '%')}${field('Top', `<input type="number" id="pd_y" step="0.5">`, '%')}
+      ${field('Width', `<input type="number" id="pd_w" step="0.5" min="0.5">`, '%')}${field('Height', `<input type="number" id="pd_h" step="0.5" min="0.5">`, '%')}
+      <p class="hint" id="pd_px"></p>`;
+    if (hasField) h += field('Shows', `<select id="pd_field">${Object.entries(FIELDS).map(([k, v]) => `<option value="${k}"${k === w.field ? ' selected' : ''}>${v[1]}</option>`).join('')}</select>`);
+    if (w.type === 'value') h += field('Label', `<input type="text" id="pd_label" placeholder="${(FIELDS[w.field] || [''])[0]}">`);
+    if (w.type === 'text') h += field('Text', `<input type="text" id="pd_text">`) + field('Align', `<select id="pd_align"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>`);
+    if (['value', 'text', 'clock', 'stores'].includes(w.type)) h += field('Text size', `<select id="pd_size"><option value="0">Auto (fit)</option><option value="1">1 (tiny)</option><option value="2">2 (labels)</option><option value="3">3 (values)</option><option value="4">4</option><option value="5">5 (big)</option></select>`);
+    if (['value', 'text', 'clock', 'bar', 'box', 'speed_tape', 'alt_tape', 'heading_tape'].includes(w.type))
+      h += `<div class="row"><label>Colour</label><input type="color" id="pd_color"><label style="width:auto"><input type="checkbox" id="pd_colDef"> default</label></div>`;
+    if (['attitude', 'speed_tape', 'alt_tape', 'value', 'stores', 'engines', 'fuel', 'signature'].includes(w.type)) h += `<div class="check"><input type="checkbox" id="pd_frame"><label for="pd_frame">Frame round it</label></div>`;
+    if (w.type === 'box') h += `<div class="check"><input type="checkbox" id="pd_fill"><label for="pd_fill">Filled (off = outline)</label></div>` + field('Line', `<input type="number" id="pd_thick" min="1" max="10">`, 'px');
+    h += `<div class="grid2" style="margin-top:10px"><button id="pd_front">Bring to front</button><button id="pd_back">Send to back</button><button id="pd_dup">Duplicate</button><button id="pd_del" class="danger">Delete</button></div>`;
+    P.innerHTML = h;
+    const num = (id, get, set) => { const el = $(id); el.value = get(); el.addEventListener('focus', () => save()); el.addEventListener('input', () => { set(+el.value); props(true); }); };
+    num('pd_x', () => pct(w.x), (v) => (w.x = v / 100)); num('pd_y', () => pct(w.y), (v) => (w.y = v / 100));
+    num('pd_w', () => pct(w.w), (v) => (w.w = Math.max(0.005, v / 100))); num('pd_h', () => pct(w.h), (v) => (w.h = Math.max(0.005, v / 100)));
+    $('pd_px').textContent = pxText(w);
+    const bindv = (id, get, set, ev = 'input') => { const el = $(id); if (!el) return; get(el); el.addEventListener('focus', () => save()); el.addEventListener(ev, () => { set(el); setDirty(true); }); };
+    bindv('pd_field', (el) => (el.value = w.field), (el) => { w.field = el.value; props(); }, 'change');
+    bindv('pd_label', (el) => (el.value = w.label || ''), (el) => (w.label = el.value));
+    bindv('pd_text', (el) => (el.value = w.text || ''), (el) => (w.text = el.value));
+    bindv('pd_align', (el) => (el.value = w.align || 'left'), (el) => (w.align = el.value), 'change');
+    bindv('pd_size', (el) => (el.value = String(w.size || 0)), (el) => (w.size = +el.value), 'change');
+    bindv('pd_frame', (el) => (el.checked = !!w.frame), (el) => (w.frame = el.checked), 'change');
+    bindv('pd_fill', (el) => (el.checked = !!w.fill), (el) => (w.fill = el.checked), 'change');
+    bindv('pd_thick', (el) => (el.value = w.thick || 2), (el) => (w.thick = Math.max(1, +el.value)));
+    if ($('pd_color')) {
+      const c = $('pd_color'), d = $('pd_colDef');
+      c.value = w.color || '#ebebeb'; d.checked = !w.color;
+      c.addEventListener('focus', () => save()); c.addEventListener('input', () => { w.color = c.value; d.checked = false; setDirty(true); });
+      d.addEventListener('change', () => { save(); w.color = d.checked ? '' : c.value; });
+    }
+    $('pd_front').onclick = () => { save(); pg.widgets.push(pg.widgets.splice(sel, 1)[0]); sel = pg.widgets.length - 1; props(); };
+    $('pd_back').onclick = () => { save(); pg.widgets.unshift(pg.widgets.splice(sel, 1)[0]); sel = 0; props(); };
+    $('pd_dup').onclick = dup; $('pd_del').onclick = del;
+  }
+  const pxText = (w) => `${Math.round(w.w * pxW)} × ${Math.round(w.h * pxH)} px on this screen, at ${Math.round(w.x * pxW)}, ${Math.round(w.y * pxH)}`;
+  $('pdPalette').innerHTML = '';
+  for (const [type, m] of Object.entries(WIDGETS)) {
+    const b = document.createElement('button'); b.textContent = m.name; b.style.textAlign = 'left';
+    b.onclick = () => {
+      save();
+      const [x, y, w, h] = m.box;
+      pg.widgets.push(W_(type, x, y, w, h, { frame: !!m.frame, fill: !!m.fill, field: m.field || '', text: m.text || '', color: m.color || '' }));
+      sel = pg.widgets.length - 1; props(); ov.focus();
+    };
+    $('pdPalette').appendChild(b);
+  }
+  $('pdName').addEventListener('input', () => { if (pg) { pg.name = $('pdName').value; setDirty(true); } });
+  $('pdBg').addEventListener('input', () => { if (pg) { pg.bg = $('pdBg').value; setDirty(true); } });
+  $('pdRate').addEventListener('input', () => { if (pg) { pg.rate = Math.max(1, Math.min(30, +$('pdRate').value || 10)); setDirty(true); } });
+  $('pdSize').addEventListener('change', () => { const o = sizes().find((s) => s[0] === $('pdSize').value); if (o) { [pxW, pxH] = [o[2], o[3]]; fitZoom(); } });
+  $('pdUndo').onclick = undo; $('pdDone').onclick = () => close();
+  new ResizeObserver(() => { if (pg) fitZoom(); }).observe($('pdStage'));
+  function open(p) {
+    pg = p; sel = -1; stack = [];
+    const opts = sizes();
+    $('pdSize').innerHTML = opts.map((o) => `<option value="${o[0]}"></option>`).join('');
+    $('pdSize').querySelectorAll('option').forEach((o, i) => (o.textContent = opts[i][1]));
+    // preview on the first screen that shows this page, else the left display
+    const showing = elements.find((e) => e.type === 'screen' && e.page === 'c_' + p.id), asg = mfd.assign.find((a) => a.page === p.id);
+    const pick = showing ? `screen:${showing.id}` : asg ? `builtin:${asg.screen}` : opts[0][0];
+    $('pdSize').value = opts.some((o) => o[0] === pick) ? pick : opts[0][0];
+    const o = opts.find((x) => x[0] === $('pdSize').value); [pxW, pxH] = [o[2], o[3]];
+    $('pdName').value = p.name; $('pdBg').value = p.bg || '#06080a'; $('pdRate').value = p.rate || 10;
+    $('pageModal').style.display = 'flex';
+    fitZoom(); props(); ov.focus(); cancelAnimationFrame(anim); loop();
+  }
+  function close() {
+    cancelAnimationFrame(anim);
+    $('pageModal').style.display = 'none'; pg = null;
+    renderPagesTab(); renderProps();
+    for (const e of elements) if (e.type === 'screen' && e.page.startsWith('c_')) buildPreview(e);
+  }
+  return { open, isOpen: () => !!pg };
+})();
 
 // ------------------------------------------------------------------------------------------------ loading / saving
 function geom(p, v0, v1, tris) {
@@ -1007,7 +1302,7 @@ async function loadJet(j) {
     }
     const g = owner[p.name];
     const m = addMesh(geom(p, 0, p.vertices.length / 3, p.triangles), mat, p.name, g ? g.obj : cockpitGroup, g);
-    if (isScreen) builtinScreenMeshes[p.name] = m;
+    if (isScreen) { builtinScreenMeshes[p.name] = m; try { builtinShapes[p.name] = screenOutline(p); } catch { } }
   }
   scene.add(cockpitGroup);
   // saved layout and items
@@ -1018,11 +1313,12 @@ async function loadJet(j) {
   }
   groups.forEach(applyGroup);
   hide = [...(data.custom.hide || [])];
+  mfd = data.mfd && data.mfd.pages ? data.mfd : { pages: [], assign: [] };
   for (const d of data.custom.decals || []) addElement(deserialise({ ...d, type: 'decal' }), false);
   for (const s of data.custom.screens || []) addElement(deserialise({ ...s, type: 'screen' }), false);
-  $('newPage').innerHTML = jets[j].pages.map((p) => `<option value="${p}">${PAGE_NAMES[p] || p}</option>`).join('');
+  $('newPage').innerHTML = jets[j].pages.map((p) => `<option value="${p}">${PAGE_NAMES[p] || p}</option>`).join('');  // (refreshed with your pages in renderPagesTab)
   $('screenHint').textContent = j === 'smt' ? 'A new display showing one of the SMT pages: any size, any outline.' : 'The MiG-29 (9.12) has no plugin pages: only the tactical display (experimental).';
-  renderBuiltins(); updateBuiltinTint(); renderAll(); setDirty(false);
+  renderBuiltins(); updateBuiltinTint(); renderPagesTab(); renderAll(); setDirty(false);
   $('loading').style.display = 'none';
   setView('Pilot');
 }
@@ -1041,7 +1337,7 @@ async function save() {
   for (const d of decals) { if (!d.canvas) d.canvas = await drawDecal(d); images[d.id] = d.canvas.toDataURL('image/png'); }
   const custom = { version: 1, decals: decals.map(serialise), screens: screens.map(serialise), hide };
   try {
-    const r = await api(`/api/save?jet=${jet}`, { custom, images, layout: layoutOut() });
+    const r = await api(`/api/save?jet=${jet}`, { custom, images, layout: layoutOut(), mfd });
     setDirty(false);
     const x = r.export, moved = Object.keys(layoutOut().groups).length;
     toast(`Saved: ${moved} instrument${moved === 1 ? '' : 's'} changed, ${x.decals} decal${x.decals === 1 ? '' : 's'}, ${x.screens} screen${x.screens === 1 ? '' : 's'}`);

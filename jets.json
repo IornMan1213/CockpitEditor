@@ -6,7 +6,7 @@
     "real_source": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29SMTSource",
     "project": "H:\\Blueprinter-Editor\\Blueprinter-Editor",
     "build_out": "H:\\Blueprinter-Editor\\Blueprinter-Editor\\MiG29SMTBuild",
-    "plugin_dir": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Nuclear Option\\BepInEx\\plugins\\MiG-29SMT",
+    "plugin_dir": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Nuclear Option\\BepInEx\\plugins\\com.nikkorap.blueprinter\\addons\\MiG29SMT",
     "instruments_dll": "MiG29SMTInstruments.dll",
     "test_build": "smt",
     "pages": ["pfd", "eng", "sms", "stby", "ufc", "tac"],
