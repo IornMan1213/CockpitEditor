@@ -27,6 +27,7 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+VERSION = "1.0"
 PORT = 8729
 ATLAS_W = 4096
 MESH_RES = 192            # decal mesh resolution (pixels along its long side)
@@ -764,7 +765,7 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/api/jets":
                 return self.send(200, {"jets": {k: {"name": v["name"], "pages": v["pages"], "builtin": v["builtin_screens"], "dev": is_dev(k)}
                                                 for k, v in JETS.items()},
-                                       "dev": any(is_dev(k) for k in JETS),
+                                       "dev": any(is_dev(k) for k in JETS), "version": VERSION,
                                        "build_enabled": CFG.get("_build_enabled", True), "build_disabled_reason": CFG.get("_build_disabled_reason", "")})
             if u.path == "/api/mesh":
                 return self.cockpit_file(self.jet(q), "cockpit_mesh.json", "application/json")
@@ -914,7 +915,7 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
-    print(f"Cockpit Editor on http://127.0.0.1:{PORT}  (close this window to stop it)")
+    print(f"Cockpit Editor {VERSION} on http://127.0.0.1:{PORT}  (close this window to stop it)")
     if "--no-browser" not in sys.argv:
         import webbrowser
         webbrowser.open(f"http://127.0.0.1:{PORT}")

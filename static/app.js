@@ -696,7 +696,7 @@ const outlineEditor = (() => {
     const after = mm(X, Y); view.x += before[0] - after[0]; view.y += before[1] - after[1]; draw();
   }, { passive: false });
   cv.addEventListener('keydown', (ev) => {
-    if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
     if (ev.key === 'Escape') { ev.stopPropagation(); close(false); return; }
     if (ev.key === 'Enter') { ev.stopPropagation(); close(true); return; }
     if ((ev.key === 'a' || ev.key === 'A')) { addAfter(); return; }
@@ -876,9 +876,9 @@ renderer.domElement.addEventListener('pointerup', (ev) => {
 window.addEventListener('keydown', (ev) => {
   if (outlineEditor.isOpen() || designer.isOpen() || setupsUI.isOpen()) return;   // those windows have their own keys
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-  if (ev.ctrlKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); return; }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); return; }
   if (typing) return;
-  if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
   if (ev.key === 'Escape') { if (placing) stopPlacing(); else select(null); return; }
   if (!selected) return;
   const x = selected, st = ev.shiftKey ? 0.01 : 0.001, k = ev.key;
@@ -893,7 +893,7 @@ window.addEventListener('keydown', (ev) => {
     changed(x); renderProps();
   }
   else if (k === 'Delete' || k === 'Backspace') { ev.preventDefault(); deleteSelected(); }
-  else if (ev.ctrlKey && k.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelected(); }
+  else if ((ev.ctrlKey || ev.metaKey) && k.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelected(); }
   else if (k === 'm' || k === 'M') startPlacing({ move: x });
   else if ((k === 'h' || k === 'H') && x.type === 'group') toggleHide(x);
   else if (k === 'f' || k === 'F') focusOn(x);
@@ -1144,13 +1144,13 @@ const designer = (() => {
   ov.addEventListener('pointerup', () => { drag = null; });
   ov.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' || ev.key === 'Enter') { ev.stopPropagation(); close(); return; }
-    if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
     if (sel < 0) return;
     const w = pg.widgets[sel], st = ev.shiftKey ? 10 : 1;
     const d = { ArrowLeft: [-st, 0], ArrowRight: [st, 0], ArrowUp: [0, -st], ArrowDown: [0, st] }[ev.key];
     if (d) { ev.preventDefault(); save(); if (ev.altKey) { w.w = Math.max(4 / pxW, w.w + d[0] / pxW); w.h = Math.max(4 / pxH, w.h + d[1] / pxH); } else { w.x += d[0] / pxW; w.y += d[1] / pxH; } props(true); }
     else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); del(); }
-    else if (ev.ctrlKey && ev.key.toLowerCase() === 'd') { ev.preventDefault(); dup(); }
+    else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') { ev.preventDefault(); dup(); }
   });
   function undo() { if (!stack.length) return; const s = JSON.parse(stack.pop()); pg.widgets = s.widgets; sel = s.sel; props(); }
   function del() { if (sel < 0) return; save(); pg.widgets.splice(sel, 1); sel = -1; props(); }
@@ -1502,6 +1502,7 @@ window.addEventListener('beforeunload', (ev) => { if (dirty) { ev.preventDefault
 (async () => {
   try {
     const info = await api('/api/jets');
+    if (info.version) document.title = `Cockpit Editor ${info.version}`;
     jets = info.jets; buildEnabled = info.build_enabled !== false; buildReason = info.build_disabled_reason || '';
     if (!buildEnabled) { $('build').title = buildReason; $('installOnly').disabled = true; $('installOnly').title = buildReason; }
     if (!info.dev) for (const id of ['build', 'logbtn']) $(id).style.display = 'none';   // building needs the mod's source

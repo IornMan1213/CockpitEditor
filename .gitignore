@@ -9,3 +9,4 @@ jets/*/*
 !jets/*/cockpit_atlas.png
 !jets/*/cockpit_atlas.json
 !jets/*/README.md
+dist/

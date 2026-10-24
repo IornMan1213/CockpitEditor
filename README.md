@@ -9,11 +9,17 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 - **Cockpit setups (.cpit)**: export a whole cockpit as one file that players drop in a Cockpits folder and switch between in game (Configuration Manager), no rebuilding. Anything wrong with a file falls back to the default cockpit.
 - Works on **Windows, Linux and macOS**; everything stays on your PC.
 
+## Download
+
+Get the newest version from [Releases](https://github.com/IornMan1213/CockpitEditor/releases/latest): one download each
+for **Windows**, **macOS** and **Linux**, with an `INSTALL.md` inside. The install guides are also here:
+[Windows](install/windows/INSTALL.md) · [macOS](install/macos/INSTALL.md) · [Linux](install/linux/INSTALL.md).
+
 ## Quick start
 
 1. Install **Python 3** (Windows / macOS: [python.org](https://www.python.org/downloads/), on Windows tick *Add python.exe to
    PATH*; Linux: it is usually there already).
-2. Download this folder (**Code > Download ZIP** on GitHub) and unzip it anywhere.
+2. Download the package for your system from [Releases](https://github.com/IornMan1213/CockpitEditor/releases/latest) and unpack it anywhere.
 3. Start the editor:
    - **Windows**: double-click `Cockpit Editor.bat`
    - **Linux**: run `./"Cockpit Editor.sh"` in a terminal in this folder (or right-click it > *Run as a program*)
