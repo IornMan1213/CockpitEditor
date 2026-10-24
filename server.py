@@ -448,18 +448,28 @@ def steam_roots():
     elif sys.platform == "darwin":
         roots.append(os.path.expanduser("~/Library/Application Support/Steam"))
     else:
-        roots += [os.path.expanduser(p) for p in ("~/.local/share/Steam", "~/.steam/steam", "~/.steam/root",
+        roots += [os.path.expanduser(p) for p in ("~/.local/share/Steam", "~/.steam/steam", "~/.steam/root", "~/.steam/debian-installation",
                                                   "~/.var/app/com.valvesoftware.Steam/.local/share/Steam",
                                                   "~/snap/steam/common/.local/share/Steam")]
-    return [r for r in roots if os.path.isdir(r)]
+    out = []
+    for r in roots:
+        if os.path.isdir(r) and os.path.realpath(r) not in (os.path.realpath(o) for o in out):
+            out.append(r)
+    return out
 
 
 def find_game():
-    """The Nuclear Option folder: the one set in the editor, else every Steam library on this PC."""
+    """The Nuclear Option folder: the one set in the editor, else the first one with BepInEx (a PC can have several, e.g. a
+    leftover Steam install next to the one Steam runs)."""
+    games = find_games()
+    return next((g for g in games if os.path.isdir(os.path.join(g, "BepInEx", "plugins"))), games[0] if games else None)
+
+
+def find_games():
     own = load_settings().get("game_dir")
     if own and os.path.isdir(own):
-        return own
-    libs = []
+        return [own]
+    found, libs = [], []
     for root in steam_roots():
         libs.append(root)
         vdf = os.path.join(root, "steamapps", "libraryfolders.vdf")
@@ -469,25 +479,23 @@ def find_game():
             pass
     for lib in libs:
         g = os.path.join(lib, "steamapps", "common", "Nuclear Option")
-        if os.path.isdir(g):
-            return g
-    return None
+        if os.path.isdir(g) and os.path.realpath(g) not in (os.path.realpath(x) for x in found):
+            found.append(g)
+    return found
 
 
 def plugin_dir(jet):
     """The jet's plugin folder (where its instruments DLL is, wherever NOMM or the player put it), or None."""
     if JETS[jet].get("plugin_dir"):
         return JETS[jet]["plugin_dir"]
-    game = find_game()
-    plugins = game and os.path.join(game, "BepInEx", "plugins")
-    if not plugins or not os.path.isdir(plugins):
-        return None
     dll = JETS[jet]["instruments_dll"].lower()
-    for root, dirs, files in os.walk(plugins):
-        if root[len(plugins):].count(os.sep) >= 5:
-            dirs[:] = []
-        if any(f.lower() == dll for f in files):
-            return root
+    for game in find_games():
+        plugins = os.path.join(game, "BepInEx", "plugins")
+        for root, dirs, files in os.walk(plugins):
+            if root[len(plugins):].count(os.sep) >= 5:
+                dirs[:] = []
+            if any(f.lower() == dll for f in files):
+                return root
     return None
 
 
