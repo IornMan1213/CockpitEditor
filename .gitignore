@@ -1,3 +1,11 @@
 worktrees/
 work/
 __pycache__/
+.venv/
+jets.local.json
+# only the cockpit the editor shows is shipped; the Blender inputs copied next to it stay local
+jets/*/*
+!jets/*/cockpit_mesh.json
+!jets/*/cockpit_atlas.png
+!jets/*/cockpit_atlas.json
+!jets/*/README.md

@@ -1,0 +1,22 @@
+{
+  "smt": {
+    "repo": "/path/to/MiG29SMT-NuclearOption",
+    "work": "/path/to/CockpitEditor/jets/smt",
+    "real_source": "/path/to/Blueprinter-Editor/MiG29SMTSource",
+    "project": "/path/to/Blueprinter-Editor",
+    "build_out": "/path/to/Blueprinter-Editor/MiG29SMTBuild",
+    "test_build": "smt"
+  },
+  "mig29": {
+    "repo": "/path/to/MiG29-NuclearOption",
+    "work": "/path/to/CockpitEditor/jets/mig29",
+    "real_source": "/path/to/Blueprinter-Editor/MiG29Source",
+    "project": "/path/to/Blueprinter-Editor",
+    "build_out": "/path/to/Blueprinter-Editor/MiG29Build",
+    "test_build": "mig"
+  },
+  "_build_enabled": true,
+  "_build_disabled_reason": "",
+  "_blender": "",
+  "_test_build_script": ""
+}

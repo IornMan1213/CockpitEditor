@@ -157,7 +157,7 @@
 
 <div id="logbox">
   <div class="bar"><strong>Log</strong><span id="buildState" class="pill"></span><span style="flex:1"></span>
-    <button id="refresh" title="Re-make the editor's cockpit from the mod (after Claude changed the cockpit)">Reload cockpit from mod</button>
+    <button id="refresh" title="Re-make the editor's cockpit from the mod (after the mod's cockpit changed)">Reload cockpit from mod</button>
     <button id="installOnly" title="Copy the last build into the game without building">Install last build</button><button id="logclose">Close</button></div>
   <pre id="log"></pre>
 </div>
@@ -174,6 +174,9 @@
     <div class="list" id="suList"></div>
     <div class="row" style="margin-top:10px"><button id="suOpenFile">Open a .cpit file&hellip;</button><input type="file" id="suFile" accept=".cpit" style="display:none"></div>
     <p class="hint" id="suDirs"></p>
+    <h2>Game folder</h2>
+    <div class="row"><input type="text" id="suGame" placeholder="the Nuclear Option folder (found by itself for Steam installs)"><button id="suGameSet">Set</button></div>
+    <p class="hint" id="suGameMsg"></p>
   </div>
 </div></div>
 <div id="pageModal" class="modal"><div class="mcard" style="width:min(1400px,98vw);height:min(900px,96vh)">
@@ -230,7 +233,7 @@
     <li><b>Rearrange</b> (Layout tab): click a gauge, display, switch panel or knob. In the right panel: <i>Move</i> then click its new spot, nudge it with the arrows, turn it, make it bigger or smaller, or hide it. <i>Reset</i> puts it back.</li>
     <li><b>Add</b> (Add tab): a decal (STEP HERE, NO STEP... or your own picture) or a screen. Click it, then click where it goes; it sits flat on the surface you click.</li>
     <li><b>Screens</b>: pick what it shows and its shape. In the right panel set its size and edit its outline: drag the corner dots, double-click an edge to add a corner, right-click a dot to remove it.</li>
-    <li><b>Save</b> (Ctrl+S). <b>Build &amp; Install</b> builds the mod with your changes and copies it into the game (a few minutes; close Unity, and the game if you want it installed straight away).</li>
+    <li><b>Save</b> (Ctrl+S), then <b>Setups</b> &gt; <b>Export .cpit</b> puts your cockpit in the game. In the game: <b>F1</b> (Configuration Manager) &gt; the jet's instruments plugin &gt; <b>Cockpit layout</b>.</li>
   </ol>
   <h2>Keys (with something selected)</h2>
   <ul>
@@ -240,11 +243,11 @@
   </ul>
   <h2>Good to know</h2>
   <ul>
-    <li>Everything is saved in the mod's <code>cockpit\</code> folder (layout.json, custom.json, decal pictures), so it goes into every build from then on.</li>
+    <li>Your work is saved on this PC (the folder is shown under <b>Setups</b>) and comes back when you reopen the editor. A <b>.cpit</b> file is the whole cockpit in one file, to keep, share or switch to in game.</li>
     <li>Moved instruments keep working (needles, lights, screens move with them). Something you hide disappears; the panel behind it is plain.</li>
     <li>Screens show the same pages as the built-in ones and lay them out to fit; their outline is kept convex (no dents) so the pages fit. Very small screens get cramped.</li>
     <li>A decal does not follow an instrument you move later: move the decal too.</li>
-    <li>New kinds of instruments or switches, and changes to the panel's shape itself, still need Claude. After Claude changes the cockpit, press <i>Reload cockpit from mod</i> in the Log.</li>
+    <li>New kinds of instruments or switches, and changes to the panel's shape itself, need a new version of the mod.</li>
   </ul>
   <p style="text-align:right"><button id="helpclose" class="primary">Got it</button></p>
 </div></div>

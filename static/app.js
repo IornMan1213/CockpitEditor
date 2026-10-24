@@ -394,7 +394,7 @@ function renderList() {
 function renderListNames() { [...$('list').children].forEach((d, i) => { const e = elements[i]; if (e) d.querySelector('.nm').textContent = e.name; }); }
 function renderGroups() {
   const G = $('groups'); G.innerHTML = '';
-  if (!groups.length) { G.innerHTML = '<p class="hint">This cockpit has no movable groups yet (press Reload cockpit from mod in the Log once Claude has added them).</p>'; return; }
+  if (!groups.length) { G.innerHTML = '<p class="hint">This cockpit has no movable instruments yet (it needs a cockpit-editor version of the mod).</p>'; return; }
   for (const kind of KIND_ORDER) {
     const list = groups.filter((g) => (KIND_NAMES[g.kind] || 'Instruments') === kind);
     if (!list.length) continue;
@@ -1414,7 +1414,12 @@ const setupsUI = (() => {
       d.querySelectorAll('button').forEach((b) => (b.onclick = () => act(b.dataset.a, s)));
       L.appendChild(d);
     }
-    $('suDirs').textContent = `Saved in ${r.editor_dir}. The game reads ${r.game_dir}.`;
+    $('suDirs').textContent = `Saved in ${r.editor_dir}.` + (r.game_dir ? ` The game reads ${r.game_dir}.` : '');
+    $('suInstall').disabled = !r.game_dir; if (!r.game_dir) $('suInstall').checked = false;
+    if (!$('suGame').value) $('suGame').value = r.game_set || r.game || '';
+    $('suGameMsg').textContent = r.game_dir ? '' : r.game
+      ? `Nuclear Option is in ${r.game}, but the ${jets[jet].name} mod is not installed there: install it, then reopen Setups.`
+      : 'Nuclear Option was not found. Type its folder above (the one with NuclearOption.exe) and press Set, or export and copy the .cpit file into the jet\'s Cockpits folder yourself.';
   }
   async function act(a, s) {
     try {
@@ -1428,6 +1433,10 @@ const setupsUI = (() => {
     } catch (err) { toast(err.message, 6000); }
   }
   $('setupsBtn').onclick = open; $('suClose').onclick = close;
+  $('suGameSet').onclick = async () => {
+    try { await api('/api/settings', { game_dir: $('suGame').value }); toast('Game folder set'); await list(); }
+    catch (err) { $('suGameMsg').textContent = err.message; }
+  };
   $('suExport').onclick = async () => {
     if (!(await save())) return;
     try {
@@ -1495,6 +1504,7 @@ window.addEventListener('beforeunload', (ev) => { if (dirty) { ev.preventDefault
     const info = await api('/api/jets');
     jets = info.jets; buildEnabled = info.build_enabled !== false; buildReason = info.build_disabled_reason || '';
     if (!buildEnabled) { $('build').title = buildReason; $('installOnly').disabled = true; $('installOnly').title = buildReason; }
+    if (!info.dev) for (const id of ['build', 'logbtn']) $(id).style.display = 'none';   // building needs the mod's source
     $('jet').innerHTML = Object.entries(jets).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
     let want = null; try { want = localStorage.getItem('ce_jet'); } catch { }
     const first = want && jets[want] ? want : Object.keys(jets)[0];
