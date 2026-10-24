@@ -9,7 +9,9 @@ and (MiG-29SMT) your MFD pages. Players can collect several and switch between t
 2. Press **Setups** at the top, type a **Name**, leave **Also put it in the game's Cockpits folder** ticked, press
    **Export .cpit**.
 
-The file is saved in the mod fork's `cockpit\setups\` folder, and (if ticked) copied into the game.
+The file is saved in your editor data folder's `setups` folder (Setups shows the path), and (if ticked) copied into the
+game. The tick box is greyed out until the editor knows where the game is: it finds Steam installs by itself, on any drive and
+on Linux too (Proton); otherwise type the folder with `NuclearOption.exe` under **Game folder** and press **Set**.
 
 ## Use it in the game
 
@@ -17,8 +19,11 @@ Setups live in a **Cockpits** folder next to the jet's plugin:
 
 | Jet | Folder |
 |---|---|
-| MiG-29SMT (installed by NOMM) | `BepInEx\plugins\com.nikkorap.blueprinter\addons\MiG29SMT\Cockpits` |
-| MiG-29 Fulcrum | `BepInEx\plugins\MiG-29_Fulcrum\Cockpits` (or the same `addons\...` path if NOMM installed it) |
+| MiG-29SMT (installed by NOMM) | `BepInEx/plugins/com.nikkorap.blueprinter/addons/MiG29SMT/Cockpits` |
+| MiG-29 Fulcrum | `BepInEx/plugins/MiG-29_Fulcrum/Cockpits` (or the same `addons/...` path if NOMM installed it) |
+
+The editor uses whichever folder the jet's plugin DLL is in, so a hand install anywhere under `BepInEx/plugins` works too.
+To install a .cpit someone sent you without the editor, copy it into that folder.
 
 Then in the game press **F1** (Configuration Manager) > the jet's instruments plugin > **Cockpit** >
 **Cockpit layout**, and pick one. It changes straight away, in flight too. **Default** is the cockpit as built.

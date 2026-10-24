@@ -1,12 +1,16 @@
 """Cockpit Editor: a local web app for placing decals (painted stencils such as STEP HERE) and custom screens in the MiG-29 /
-MiG-29SMT cockpits, then building and installing the mod.
+MiG-29SMT cockpits and exporting them as cockpit setups (.cpit) the game switches between.
 
-    python server.py            (or double-click "Cockpit Editor.bat") -> http://127.0.0.1:8729
+    python start.py             (or the "Cockpit Editor" launcher for your OS) -> http://127.0.0.1:8729
 
-What it writes, per jet (jets.json says where each repo is):
-    <repo>/cockpit/custom.json          the elements as placed in the editor (the editor's own save file)
-    <repo>/cockpit/decals/<id>.png      each decal's picture as drawn in the editor (kept for re-editing)
-    <repo>/cockpit/build/               what the Unity builder reads (the build script copies it to <source>/custom):
+Config: jets.json (shipped) with jets.local.json (mod developers only, not shipped) merged over it per jet. With a jet's
+"repo" and "project" set there, saves go to <repo>/cockpit and Build & Install / Reload cockpit from mod are available;
+otherwise saves go to the user's data folder (data_dir()) and the cockpit comes from jets/<jet>/.
+
+What it writes, per jet (<save> is <repo>/cockpit or <data>/<jet>):
+    <save>/custom.json                  the elements as placed in the editor (the editor's own save file)
+    <save>/decals/<id>.png              each decal's picture as drawn in the editor (kept for re-editing)
+    <save>/build/                       what the Unity builder reads (the build script copies it to <source>/custom):
         custom_mesh.json                meshes in the cockpit_mesh.json part format, Unity MiG frame
         <id>.png                        decal textures (colours bled into the clear areas, alpha opaque)
         decal_metallic.png              the cockpit paint's metallic/smoothness, for the decal material
@@ -23,16 +27,49 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+VERSION = "1.0"
 PORT = 8729
-CFG = json.load(open(os.path.join(HERE, "jets.json"), encoding="utf8"))
-JETS = {k: v for k, v in CFG.items() if not k.startswith("_")}
 ATLAS_W = 4096
 MESH_RES = 192            # decal mesh resolution (pixels along its long side)
 BUILD = {"running": False, "log": "", "jet": None, "ok": None}
 
 
+def load_config():
+    cfg = json.load(open(os.path.join(HERE, "jets.json"), encoding="utf8"))
+    local = os.path.join(HERE, "jets.local.json")
+    if os.path.exists(local):
+        for k, v in json.load(open(local, encoding="utf8")).items():
+            cfg[k] = {**cfg[k], **v} if isinstance(v, dict) and isinstance(cfg.get(k), dict) else v
+    return cfg
+
+
+CFG = load_config()
+JETS = {k: v for k, v in CFG.items() if not k.startswith("_")}
+
+
+def data_dir():
+    """Where a player's own cockpits are kept, outside the editor folder so updating the editor never touches them."""
+    if os.environ.get("COCKPIT_EDITOR_DATA"):
+        return os.environ["COCKPIT_EDITOR_DATA"]
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "CockpitEditor")
+
+
+def is_dev(jet):
+    return bool(JETS[jet].get("repo") and JETS[jet].get("project"))
+
+
+def work_dir(jet):
+    return JETS[jet].get("work") or os.path.join(HERE, "jets", jet)
+
+
 def cockpit_dir(jet):
-    return os.path.join(JETS[jet]["repo"], "cockpit")
+    return os.path.join(JETS[jet]["repo"], "cockpit") if JETS[jet].get("repo") else os.path.join(data_dir(), jet)
 
 
 def load_custom(jet):
@@ -246,7 +283,7 @@ def bleed(img):
 
 
 def atlas_uv(jet, cell):
-    at = json.load(open(os.path.join(JETS[jet]["work"], "cockpit_atlas.json"), encoding="utf8"))
+    at = json.load(open(os.path.join(work_dir(jet), "cockpit_atlas.json"), encoding="utf8"))
     x, y, w, h = at["rects"][cell]
     return ((x + w / 2) / ATLAS_W, 1 - (y + h / 2) / ATLAS_W)
 
@@ -333,7 +370,7 @@ def export(jet):
 # ------------------------------------------------------------------------------------------------ built-in screens
 def builtin_screens(jet):
     """Size (m) of each built-in plugin screen, from the cockpit mesh: the editor offers them as default sizes."""
-    p = os.path.join(JETS[jet]["work"], "cockpit_mesh.json")
+    p = os.path.join(work_dir(jet), "cockpit_mesh.json")
     if not os.path.exists(p) or not JETS[jet]["builtin_screens"]:
         return {}
     parts = {q["name"]: q for q in json.load(open(p, encoding="utf8"))["parts"]}
@@ -342,8 +379,8 @@ def builtin_screens(jet):
         q = parts.get(name)
         if not q:
             continue
-        v = np.array(q["vertices"]).reshape(-1, 3)
-        n = np.array(q["normals"][:3]); n /= np.linalg.norm(n)
+        v = np.array(q["vertices"], dtype=np.float64).reshape(-1, 3)
+        n = np.array(q["normals"][:3], dtype=np.float64); n /= np.linalg.norm(n)
         best, right = -9, np.array([1.0, 0, 0])
         for i in range(len(v)):
             for j in range(i + 1, len(v)):
@@ -363,18 +400,122 @@ def builtin_screens(jet):
 
 
 # ------------------------------------------------------------------------------------------------ build + install
+def running(*names):
+    """Whether a process with one of these executable names runs."""
+    try:
+        if sys.platform == "win32":
+            want = {n.lower() for n in names}
+            out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+            return any(line.split('","')[0].strip('"').lower() in want for line in out.splitlines())
+        # executable names (Linux cuts them to 15 characters: the game under Proton is "NuclearOption.e"; macOS gives paths)
+        out = subprocess.run(["ps", "-A", "-o", "comm="], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            c = os.path.basename(line.strip())
+            if c in names or (len(c) == 15 and any(n.startswith(c) for n in names)):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def game_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq NuclearOption.exe", "/NH"], capture_output=True, text=True).stdout
-    return "NuclearOption.exe" in out
+    return running("NuclearOption.exe", "NuclearOption")
 
 
 def unity_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unity.exe", "/NH"], capture_output=True, text=True).stdout
-    return "Unity.exe" in out
+    return running("Unity.exe", "Unity")
+
+
+# ------------------------------------------------------------------------------------------------ finding the game
+def settings_path():
+    return os.path.join(data_dir(), "settings.json")
+
+
+def load_settings():
+    return read_json(settings_path(), {})
+
+
+def steam_roots():
+    roots = []
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
+                roots.append(winreg.QueryValueEx(k, "SteamPath")[0])
+        except OSError:
+            pass
+        roots += [r"C:\Program Files (x86)\Steam", r"C:\Program Files\Steam"]
+    elif sys.platform == "darwin":
+        roots.append(os.path.expanduser("~/Library/Application Support/Steam"))
+    else:
+        roots += [os.path.expanduser(p) for p in ("~/.local/share/Steam", "~/.steam/steam", "~/.steam/root", "~/.steam/debian-installation",
+                                                  "~/.var/app/com.valvesoftware.Steam/.local/share/Steam",
+                                                  "~/snap/steam/common/.local/share/Steam")]
+    out = []
+    for r in roots:
+        if os.path.isdir(r) and os.path.realpath(r) not in (os.path.realpath(o) for o in out):
+            out.append(r)
+    return out
+
+
+def find_game():
+    """The Nuclear Option folder: the one set in the editor, else the first one with BepInEx (a PC can have several, e.g. a
+    leftover Steam install next to the one Steam runs)."""
+    games = find_games()
+    return next((g for g in games if os.path.isdir(os.path.join(g, "BepInEx", "plugins"))), games[0] if games else None)
+
+
+def find_games():
+    own = load_settings().get("game_dir")
+    if own and os.path.isdir(own):
+        return [own]
+    found, libs = [], []
+    for root in steam_roots():
+        libs.append(root)
+        vdf = os.path.join(root, "steamapps", "libraryfolders.vdf")
+        try:
+            libs += [p.replace("\\\\", "\\") for p in re.findall(r'"path"\s+"([^"]+)"', open(vdf, encoding="utf8", errors="replace").read())]
+        except OSError:
+            pass
+    for lib in libs:
+        g = os.path.join(lib, "steamapps", "common", "Nuclear Option")
+        if os.path.isdir(g) and os.path.realpath(g) not in (os.path.realpath(x) for x in found):
+            found.append(g)
+    return found
+
+
+def plugin_dir(jet):
+    """The jet's plugin folder (where its instruments DLL is, wherever NOMM or the player put it), or None."""
+    if JETS[jet].get("plugin_dir"):
+        return JETS[jet]["plugin_dir"]
+    dll = JETS[jet]["instruments_dll"].lower()
+    for game in find_games():
+        plugins = os.path.join(game, "BepInEx", "plugins")
+        for root, dirs, files in os.walk(plugins):
+            if root[len(plugins):].count(os.sep) >= 5:
+                dirs[:] = []
+            if any(f.lower() == dll for f in files):
+                return root
+    return None
 
 
 def log(msg):
     BUILD["log"] += msg + "\n"
+
+
+def powershell():
+    return shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+
+
+def blender():
+    if CFG.get("_blender"):
+        return CFG["_blender"]
+    if sys.platform == "win32" and not shutil.which("blender"):
+        return r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+    if sys.platform == "darwin" and not shutil.which("blender"):
+        return "/Applications/Blender.app/Contents/MacOS/Blender"
+    return shutil.which("blender") or "blender"
 
 
 def run_build(jet, quick, install):
@@ -384,7 +525,7 @@ def run_build(jet, quick, install):
         log(f"== {j['name']}: exporting the cockpit editor elements")
         log(json.dumps(export(jet)))
         script = os.path.join(j["repo"], "tools", "build_mig29.ps1")
-        args = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Project", j["project"]]
+        args = [powershell(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Project", j["project"]]
         if quick:
             args.append("-Quick")
         log("== building (Unity; " + ("quick, a few minutes" if quick else "full, 10-15 minutes") + ")")
@@ -408,7 +549,7 @@ def run_build(jet, quick, install):
                 install_files(jet, nobps[-1])
         ts = CFG.get("_test_build_script")
         if ts and os.path.exists(ts):
-            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ts, j["test_build"], "cockpit editor build"],
+            r = subprocess.run([powershell(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ts, j["test_build"], "cockpit editor build"],
                                capture_output=True, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             log((r.stdout + r.stderr).strip())
         BUILD["ok"] = True
@@ -436,7 +577,16 @@ def setups_dir(jet):
 
 
 def game_setups_dir(jet):
-    return os.path.join(JETS[jet]["plugin_dir"], "Cockpits")
+    p = plugin_dir(jet)
+    return p and os.path.join(p, "Cockpits")
+
+
+def need_game_setups_dir(jet):
+    d = game_setups_dir(jet)
+    if not d:
+        raise ValueError(f"The game's {JETS[jet]['name']} plugin was not found. Install the mod, or set the Nuclear Option "
+                         "folder in Setups.")
+    return d
 
 
 def read_json(path, default):
@@ -502,7 +652,7 @@ def import_cpit(jet, data):
 def list_setups(jet):
     out = []
     for where, d in (("editor", setups_dir(jet)), ("game", game_setups_dir(jet))):
-        if os.path.isdir(d):
+        if d and os.path.isdir(d):
             for f in sorted(os.listdir(d)):
                 if f.lower().endswith(".cpit"):
                     p = os.path.join(d, f)
@@ -511,19 +661,19 @@ def list_setups(jet):
 
 
 def refresh(jet):
-    """Re-make the editor's copy of the cockpit (the work dir) with the repo's blender/cockpit_build.py, e.g. after Claude
-    changed the cockpit. Only the work dir is written; the mod's own source folder is only read."""
+    """Re-make the editor's copy of the cockpit (the work dir) with the repo's blender/cockpit_build.py, e.g. after the mod's
+    cockpit changed. Only the work dir is written; the mod's own source folder is only read."""
     j = JETS[jet]
     BUILD.update(running=True, log="", jet=jet, ok=None)
     try:
-        os.makedirs(j["work"], exist_ok=True)
+        work = work_dir(jet)
+        os.makedirs(work, exist_ok=True)
         for f in ("cockpit_atlas.json", "cockpit_atlas.png", "cockpit_metallic.png", "mig29_basecolor.png", "mig29_mesh.json"):
             src = os.path.join(j["real_source"], f)
             if os.path.exists(src):
-                shutil.copy2(src, j["work"])
+                shutil.copy2(src, work)
         log(f"== {j['name']}: rebuilding the editor's cockpit in Blender (a minute or two)")
-        p = subprocess.run([CFG.get("_blender", r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"), "-b", "--python",
-                            os.path.join(j["repo"], "blender", "cockpit_build.py"), "--", j["work"]],
+        p = subprocess.run([blender(), "-b", "--python", os.path.join(j["repo"], "blender", "cockpit_build.py"), "--", work],
                            capture_output=True, text=True, encoding="utf8", errors="replace", cwd=j["repo"],
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         log("\n".join(l for l in p.stdout.splitlines() if "[cockpit]" in l or "Error" in l or "Traceback" in l))
@@ -537,21 +687,24 @@ def refresh(jet):
 
 def install_files(jet, nobp):
     j = JETS[jet]
-    os.makedirs(j["plugin_dir"], exist_ok=True)
-    for f in os.listdir(j["plugin_dir"]):
+    dst = plugin_dir(jet)
+    if not dst:
+        raise ValueError(f"The game's {j['name']} plugin folder was not found: set plugin_dir in jets.local.json")
+    os.makedirs(dst, exist_ok=True)
+    for f in os.listdir(dst):
         if f.endswith(".nobp"):
-            os.remove(os.path.join(j["plugin_dir"], f))
-    shutil.copy2(nobp, j["plugin_dir"])
+            os.remove(os.path.join(dst, f))
+    shutil.copy2(nobp, dst)
     dll = os.path.join(j["build_out"], j["instruments_dll"])
     if os.path.exists(dll):
-        shutil.copy2(dll, j["plugin_dir"])
+        shutil.copy2(dll, dst)
     pages = os.path.join(j["build_out"], "mfd_pages.json")   # custom MFD pages, read by the plugin from its own folder
-    old = os.path.join(j["plugin_dir"], "mfd_pages.json")
+    old = os.path.join(dst, "mfd_pages.json")
     if os.path.exists(pages):
-        shutil.copy2(pages, j["plugin_dir"])
+        shutil.copy2(pages, dst)
     elif os.path.exists(old):
         os.remove(old)
-    log(f"== installed {os.path.basename(nobp)} into {j['plugin_dir']}")
+    log(f"== installed {os.path.basename(nobp)} into {dst}")
 
 
 # ------------------------------------------------------------------------------------------------ http
@@ -582,8 +735,24 @@ class H(BaseHTTPRequestHandler):
             raise ValueError("unknown jet " + j)
         return j
 
+    def foreign(self):
+        """Requests from other web pages (or DNS rebinding) are refused: only this editor's own page may use the API."""
+        ok = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+        if self.headers.get("Host", "") not in ok:
+            return True
+        origin = self.headers.get("Origin")
+        return bool(origin) and origin.split("://", 1)[-1] not in ok
+
+    def cockpit_file(self, jet, name, ctype):
+        p = os.path.join(work_dir(jet), name)
+        if not os.path.exists(p):
+            return self.send(404, {"error": f"{JETS[jet]['name']}: the editor's copy of the cockpit is missing ({p})"})
+        self.file(p, ctype)
+
     def do_GET(self):
         try:
+            if self.foreign():
+                return self.send(403, {"error": "forbidden"})
             u = urlparse(self.path); q = parse_qs(u.query)
             if u.path in ("/", "/index.html"):
                 return self.file(os.path.join(HERE, "static", "index.html"), "text/html; charset=utf-8")
@@ -594,12 +763,14 @@ class H(BaseHTTPRequestHandler):
                 ct = {".js": "text/javascript", ".css": "text/css", ".png": "image/png"}.get(os.path.splitext(f)[1], "application/octet-stream")
                 return self.file(f, ct)
             if u.path == "/api/jets":
-                return self.send(200, {"jets": {k: {"name": v["name"], "pages": v["pages"], "builtin": v["builtin_screens"]} for k, v in JETS.items()},
+                return self.send(200, {"jets": {k: {"name": v["name"], "pages": v["pages"], "builtin": v["builtin_screens"], "dev": is_dev(k)}
+                                                for k, v in JETS.items()},
+                                       "dev": any(is_dev(k) for k in JETS), "version": VERSION,
                                        "build_enabled": CFG.get("_build_enabled", True), "build_disabled_reason": CFG.get("_build_disabled_reason", "")})
             if u.path == "/api/mesh":
-                return self.file(os.path.join(JETS[self.jet(q)]["work"], "cockpit_mesh.json"), "application/json")
+                return self.cockpit_file(self.jet(q), "cockpit_mesh.json", "application/json")
             if u.path == "/api/atlas":
-                return self.file(os.path.join(JETS[self.jet(q)]["work"], "cockpit_atlas.png"), "image/png")
+                return self.cockpit_file(self.jet(q), "cockpit_atlas.png", "image/png")
             if u.path == "/api/load":
                 jet = self.jet(q)
                 lp = os.path.join(cockpit_dir(jet), "layout.json")
@@ -612,10 +783,11 @@ class H(BaseHTTPRequestHandler):
                 return self.file(os.path.join(cockpit_dir(jet), "decals", did + ".png"), "image/png")
             if u.path == "/api/cpit/list":
                 jet = self.jet(q)
-                return self.send(200, {"setups": list_setups(jet), "editor_dir": setups_dir(jet), "game_dir": game_setups_dir(jet)})
+                return self.send(200, {"setups": list_setups(jet), "editor_dir": setups_dir(jet), "game_dir": game_setups_dir(jet),
+                                       "game": find_game(), "game_set": load_settings().get("game_dir", "")})
             if u.path == "/api/cpit/download":
                 jet = self.jet(q)
-                where = game_setups_dir(jet) if q.get("where", [""])[0] == "game" else setups_dir(jet)
+                where = need_game_setups_dir(jet) if q.get("where", [""])[0] == "game" else setups_dir(jet)
                 p = os.path.join(where, safe_name(q.get("name", [""])[0]) + ".cpit")
                 if not os.path.exists(p):
                     return self.send(404, {"error": "no such setup"})
@@ -636,8 +808,19 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if self.foreign():
+                return self.send(403, {"error": "forbidden"})
             u = urlparse(self.path); q = parse_qs(u.query)
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            if u.path == "/api/settings":
+                st = load_settings()
+                g = (body.get("game_dir") or "").strip().strip('"')
+                if g and not os.path.isdir(os.path.join(g, "BepInEx")):
+                    return self.send(400, {"error": f"No BepInEx folder in {g}: pick the Nuclear Option folder (the one with NuclearOption.exe)"})
+                st["game_dir"] = g
+                os.makedirs(data_dir(), exist_ok=True)
+                json.dump(st, open(settings_path(), "w", encoding="utf8"), indent=1)
+                return self.send(200, {"ok": True, "game": find_game(), "plugins": {k: plugin_dir(k) for k in JETS}})
             jet = self.jet(q)
             if u.path == "/api/save":
                 cd = cockpit_dir(jet)
@@ -673,28 +856,32 @@ class H(BaseHTTPRequestHandler):
                 json.dump(data, open(path, "w", encoding="utf8"))
                 res = {"ok": True, "name": name, "path": path, "installed": None}
                 if body.get("install"):
-                    os.makedirs(game_setups_dir(jet), exist_ok=True)
-                    shutil.copy2(path, game_setups_dir(jet))
-                    res["installed"] = os.path.join(game_setups_dir(jet), name + ".cpit")
+                    gd = need_game_setups_dir(jet)
+                    os.makedirs(gd, exist_ok=True)
+                    shutil.copy2(path, gd)
+                    res["installed"] = os.path.join(gd, name + ".cpit")
                 return self.send(200, res)
             if u.path == "/api/cpit/import":
                 if body.get("content") is not None:
                     data = json.loads(body["content"]) if isinstance(body["content"], str) else body["content"]
                 else:
-                    where = game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
+                    where = need_game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
                     data = json.load(open(os.path.join(where, safe_name(body.get("name")) + ".cpit"), encoding="utf8"))
                 return self.send(200, {"ok": True, "export": import_cpit(jet, data)})
             if u.path == "/api/cpit/install":
                 src = os.path.join(setups_dir(jet), safe_name(body.get("name")) + ".cpit")
-                os.makedirs(game_setups_dir(jet), exist_ok=True)
-                shutil.copy2(src, game_setups_dir(jet))
+                gd = need_game_setups_dir(jet)
+                os.makedirs(gd, exist_ok=True)
+                shutil.copy2(src, gd)
                 return self.send(200, {"ok": True})
             if u.path == "/api/cpit/delete":
-                where = game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
+                where = need_game_setups_dir(jet) if body.get("where") == "game" else setups_dir(jet)
                 p = os.path.join(where, safe_name(body.get("name")) + ".cpit")
                 if os.path.exists(p):
                     os.remove(p)
                 return self.send(200, {"ok": True})
+            if u.path in ("/api/refresh", "/api/build", "/api/install") and not is_dev(jet):
+                return self.send(409, {"error": "Building needs the mod's source (jets.local.json): export a cockpit setup instead."})
             if u.path == "/api/refresh":
                 if BUILD["running"]:
                     return self.send(409, {"error": "busy: a build or refresh is running"})
@@ -728,7 +915,7 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
-    print(f"Cockpit Editor on http://127.0.0.1:{PORT}  (close this window to stop it)")
+    print(f"Cockpit Editor {VERSION} on http://127.0.0.1:{PORT}  (close this window to stop it)")
     if "--no-browser" not in sys.argv:
         import webbrowser
         webbrowser.open(f"http://127.0.0.1:{PORT}")

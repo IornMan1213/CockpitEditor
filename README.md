@@ -7,13 +7,31 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 - **Design your own MFD pages** from widgets (attitude, tapes, readings, RWR, stores, engines...) with a pixel-accurate live preview, and show them on any screen, built-in ones included.
 - **Add decals**: STEP HERE, NO STEP, hazard stripes, placards, or your own pictures.
 - **Cockpit setups (.cpit)**: export a whole cockpit as one file that players drop in a Cockpits folder and switch between in game (Configuration Manager), no rebuilding. Anything wrong with a file falls back to the default cockpit.
-- **Build & Install** the mod with your changes in one click.
+- Works on **Windows, Linux and macOS**; everything stays on your PC.
+
+## Download
+
+Get the newest version from [Releases](https://github.com/IornMan1213/CockpitEditor/releases/latest): one download each
+for **Windows**, **macOS** and **Linux**, with an `INSTALL.md` inside. The install guides are also here:
+[Windows](install/windows/INSTALL.md) · [macOS](install/macos/INSTALL.md) · [Linux](install/linux/INSTALL.md).
 
 ## Quick start
 
-1. `pip install numpy pillow` (once).
-2. Double-click **`Cockpit Editor.bat`**. Leave the black window open; your browser opens the editor.
-3. Pick the jet, make your changes, **Ctrl+S** to save, **Build & Install** to try them in the game.
+1. Install **Python 3** (Windows / macOS: [python.org](https://www.python.org/downloads/), on Windows tick *Add python.exe to
+   PATH*; Linux: it is usually there already).
+2. Download the package for your system from [Releases](https://github.com/IornMan1213/CockpitEditor/releases/latest) and unpack it anywhere.
+3. Start the editor:
+   - **Windows**: double-click `Cockpit Editor.bat`
+   - **Linux**: run `./"Cockpit Editor.sh"` in a terminal in this folder (or right-click it > *Run as a program*)
+   - **macOS**: double-click `Cockpit Editor.command` (the first time: right-click > *Open*)
+
+   The first start installs numpy and Pillow for the editor by itself (a minute). Leave the window it opens running; your
+   browser opens the editor.
+4. Pick the jet, make your changes, **Ctrl+S** to save, then **Setups > Export .cpit** to put your cockpit in the game.
+5. In the game: **F1** (Configuration Manager) > the jet's instruments plugin > **Cockpit layout**, and pick it.
+
+You need the jet's mod installed (a version made for the cockpit editor). The editor finds Steam installs of Nuclear Option on
+its own, on any drive; otherwise type the game folder in **Setups > Game folder**.
 
 ## Guides
 
@@ -21,7 +39,7 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 2. [Rearranging the cockpit](docs/02-rearranging-the-cockpit.md): moving, turning, resizing and hiding instruments
 3. [Decals](docs/03-decals.md): templates, text and colours, your own pictures
 4. [Screens](docs/04-screens.md): pages, sizes, outlines, bezels, moving a built-in page to your own screen
-5. [Saving, building and installing](docs/05-building-and-installing.md): what is saved where, Build & Install
+5. [Saving and putting it in the game](docs/05-building-and-installing.md): what is saved where, exporting, Build & Install (developers)
 6. [Troubleshooting](docs/06-troubleshooting.md)
 7. [How it works](docs/07-how-it-works.md): for developers
 8. [Page designer](docs/08-page-designer.md): your own MFD pages
@@ -46,10 +64,22 @@ Rearrange and add to the **MiG-29** and **MiG-29SMT** cockpits (Nuclear Option m
 
 | What | Where |
 |---|---|
-| The editor | this folder: `server.py`, `static/`, `jets.json` |
-| Your layout, decals and screens | each mod fork's `cockpit\` folder (`Documents\Forks\<mod>\cockpit`) |
-| The mods it builds | `Documents\Forks\MiG29-NuclearOption` and `\MiG29SMT-NuclearOption`, branch `editor` (local forks; the released repos are untouched) |
-| The editor's copy of each cockpit | `work\<jet>` (made from the mod with **Log > Reload cockpit from mod**) |
-| Test builds | `MiG29-NuclearOption\builds\test-builds` |
+| The editor | this folder: `start.py`, `server.py`, `static/`, `jets.json`, and each jet's cockpit in `jets/<jet>/` |
+| Your layout, decals, screens and saved setups | Windows `%APPDATA%\CockpitEditor`, Linux `~/.local/share/CockpitEditor`, macOS `~/Library/Application Support/CockpitEditor` (one folder per jet), so updating the editor never touches them |
+| Setups the game uses | the `Cockpits` folder next to the jet's plugin in `BepInEx/plugins` (see [Cockpit setups](docs/09-cockpit-setups.md)) |
 
-Paths are set in `jets.json`. The editor only runs on your own PC (127.0.0.1) and never uploads anything.
+The editor only runs on your own PC (127.0.0.1), accepts nothing from other web pages, and never uploads anything. It loads
+its 3D library (three.js) from unpkg.com, so the first start needs an internet connection.
+
+**Mod developers:** Build & Install and Reload cockpit from mod build the mod itself from its source. See
+[How it works](docs/07-how-it-works.md).
+
+## Licence
+
+- **Source code**: [MIT](LICENSE).
+- **Cockpit data** in `jets/`: from the [MiG-29](https://github.com/IornMan1213/MiG29-NuclearOption) and
+  [MiG-29SMT](https://github.com/IornMan1213/MiG29SMT-NuclearOption) mods, under the same
+  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) licence as their releases (free, non-commercial,
+  credit required).
+- Nuclear Option is by Shockfront. This is an unofficial fan tool with no affiliation to Shockfront.
+- Made with the assistance of AI (Anthropic's Claude), which helped write the code and documentation.
