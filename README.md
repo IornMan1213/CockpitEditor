@@ -67,3 +67,13 @@ its 3D library (three.js) from unpkg.com, so the first start needs an internet c
 
 **Mod developers:** Build & Install and Reload cockpit from mod build the mod itself from its source. See
 [How it works](docs/07-how-it-works.md).
+
+## Licence
+
+- **Source code**: [MIT](LICENSE).
+- **Cockpit data** in `jets/`: from the [MiG-29](https://github.com/IornMan1213/MiG29-NuclearOption) and
+  [MiG-29SMT](https://github.com/IornMan1213/MiG29SMT-NuclearOption) mods, under the same
+  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) licence as their releases (free, non-commercial,
+  credit required).
+- Nuclear Option is by Shockfront. This is an unofficial fan tool with no affiliation to Shockfront.
+- Made with the assistance of AI (Anthropic's Claude), which helped write the code and documentation.
