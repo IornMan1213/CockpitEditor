@@ -27,7 +27,7 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "1.0"
+VERSION = "1.1"
 PORT = int(os.environ.get("COCKPIT_EDITOR_PORT", "8729"))   # another port: run a second copy beside the first
 ATLAS_W = 4096
 MESH_RES = 192            # decal mesh resolution (pixels along its long side)
@@ -951,4 +951,7 @@ if __name__ == "__main__":
     if "--no-browser" not in sys.argv:
         import webbrowser
         webbrowser.open(f"http://127.0.0.1:{PORT}")
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:   # Ctrl+C in the terminal: stop quietly
+        print("Cockpit Editor stopped.")
