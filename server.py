@@ -27,8 +27,8 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "1.0"
-PORT = 8729
+VERSION = "1.1"
+PORT = int(os.environ.get("COCKPIT_EDITOR_PORT", "8729"))   # another port: run a second copy beside the first
 ATLAS_W = 4096
 MESH_RES = 192            # decal mesh resolution (pixels along its long side)
 BUILD = {"running": False, "log": "", "jet": None, "ok": None}
@@ -485,11 +485,9 @@ def find_games():
     return found
 
 
-def plugin_dir(jet):
-    """The jet's plugin folder (where its instruments DLL is, wherever NOMM or the player put it), or None."""
-    if JETS[jet].get("plugin_dir"):
-        return JETS[jet]["plugin_dir"]
-    dll = JETS[jet]["instruments_dll"].lower()
+def find_dll(dll):
+    """The plugin folder holding this DLL (wherever NOMM or the player put it), or None."""
+    dll = dll.lower()
     for game in find_games():
         plugins = os.path.join(game, "BepInEx", "plugins")
         for root, dirs, files in os.walk(plugins):
@@ -498,6 +496,27 @@ def plugin_dir(jet):
             if any(f.lower() == dll for f in files):
                 return root
     return None
+
+
+def plugin_targets(jet):
+    """Every installed plugin that flies this jet, as (name, folder): its own mod, then any pack that carries it ("packs" in
+    jets.json: the MiG-29 Pack has both jets, one plugin, one Cockpits folder). More than one means a broken install: the game
+    would load the same aircraft twice."""
+    j = JETS[jet]
+    if j.get("plugin_dir"):
+        return [(j["name"] + " mod", j["plugin_dir"])]
+    found = []
+    for name, dll in [(j["name"] + " mod", j["instruments_dll"])] + [(p["name"], p["dll"]) for p in j.get("packs", [])]:
+        d = find_dll(dll)
+        if d:
+            found.append((name, d))
+    return found
+
+
+def plugin_dir(jet):
+    """The jet's plugin folder (its mod's, else the pack's), or None."""
+    t = plugin_targets(jet)
+    return t[0][1] if t else None
 
 
 def log(msg):
@@ -649,12 +668,22 @@ def import_cpit(jet, data):
     return export(jet)
 
 
+def cpit_jet(path):
+    """The jet a .cpit is for, from the start of the file ("jet" comes third, before the big parts)."""
+    try:
+        m = re.search(r'"jet"\s*:\s*"([^"]*)"', open(path, encoding="utf8", errors="replace").read(400))
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
 def list_setups(jet):
     out = []
     for where, d in (("editor", setups_dir(jet)), ("game", game_setups_dir(jet))):
         if d and os.path.isdir(d):
             for f in sorted(os.listdir(d)):
-                if f.lower().endswith(".cpit"):
+                # a pack's one Cockpits folder holds every jet's setups: only this jet's
+                if f.lower().endswith(".cpit") and cpit_jet(os.path.join(d, f)) in (None, jet):
                     p = os.path.join(d, f)
                     out.append({"name": f[:-5], "where": where, "size": os.path.getsize(p), "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(p)))})
     return out
@@ -783,7 +812,10 @@ class H(BaseHTTPRequestHandler):
                 return self.file(os.path.join(cockpit_dir(jet), "decals", did + ".png"), "image/png")
             if u.path == "/api/cpit/list":
                 jet = self.jet(q)
+                targets = plugin_targets(jet)
                 return self.send(200, {"setups": list_setups(jet), "editor_dir": setups_dir(jet), "game_dir": game_setups_dir(jet),
+                                       "game_mod": targets[0][0] if targets else None, "game_mods": [t[0] for t in targets],
+                                       "packs": [p["name"] for p in JETS[jet].get("packs", [])],
                                        "game": find_game(), "game_set": load_settings().get("game_dir", "")})
             if u.path == "/api/cpit/download":
                 jet = self.jet(q)
@@ -919,4 +951,7 @@ if __name__ == "__main__":
     if "--no-browser" not in sys.argv:
         import webbrowser
         webbrowser.open(f"http://127.0.0.1:{PORT}")
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:   # Ctrl+C in the terminal: stop quietly
+        print("Cockpit Editor stopped.")

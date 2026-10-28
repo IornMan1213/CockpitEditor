@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1 (unreleased)
+
+- **Works with the MiG-29 Pack.** The editor found a jet's game plugin only by its own mod's DLL, so with the MiG-29 Pack
+  installed it found nothing to put cockpits into. It now looks for the jet's mod, then the pack, and the pack's one
+  Cockpits folder lists only the setups for the jet you are editing. Setups says which one the game reads, and warns when
+  a mod and the pack are both installed (the game would load the same jet twice).
+- `COCKPIT_EDITOR_PORT` runs a second copy of the editor on another port.
+
 ## 1.0
 
 First public release. Design your own MiG-29SMT cockpit in your browser and switch to it in the game, no rebuilding.

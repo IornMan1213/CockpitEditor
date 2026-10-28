@@ -30,7 +30,7 @@ for **Windows**, **macOS** and **Linux**, with an `INSTALL.md` inside. The insta
 4. Pick the jet, make your changes, **Ctrl+S** to save, then **Setups > Export .cpit** to put your cockpit in the game.
 5. In the game: **F1** (Configuration Manager) > the jet's instruments plugin > **Cockpit layout**, and pick it.
 
-You need the jet's mod installed (a version made for the cockpit editor). The editor finds Steam installs of Nuclear Option on
+You need the jet's mod or the MiG-29 Pack installed (a version made for the cockpit editor). The editor finds Steam installs of Nuclear Option on
 its own, on any drive; otherwise type the game folder in **Setups > Game folder**.
 
 ## Guides
