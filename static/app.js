@@ -1414,11 +1414,12 @@ const setupsUI = (() => {
       d.querySelectorAll('button').forEach((b) => (b.onclick = () => act(b.dataset.a, s)));
       L.appendChild(d);
     }
-    $('suDirs').textContent = `Saved in ${r.editor_dir}.` + (r.game_dir ? ` The game reads ${r.game_dir}.` : '');
+    $('suDirs').textContent = `Saved in ${r.editor_dir}.` + (r.game_dir ? ` The game reads ${r.game_dir} (${r.game_mod}).` : '')
+      + ((r.game_mods || []).length > 1 ? ` Both ${r.game_mods.join(' and ')} are installed: the game loads the same jet twice, so remove one of them.` : '');
     $('suInstall').disabled = !r.game_dir; if (!r.game_dir) $('suInstall').checked = false;
     if (!$('suGame').value) $('suGame').value = r.game_set || r.game || '';
     $('suGameMsg').textContent = r.game_dir ? '' : r.game
-      ? `Nuclear Option is in ${r.game}, but the ${jets[jet].name} mod is not installed there: install it, then reopen Setups.`
+      ? `Nuclear Option is in ${r.game}, but neither the ${jets[jet].name} mod` + ((r.packs || []).length ? ` nor the ${r.packs.join(' / ')}` : '') + ' is installed there: install one, then reopen Setups.'
       : 'Nuclear Option was not found. Type its folder above (the one with NuclearOption.exe) and press Set, or export and copy the .cpit file into the jet\'s Cockpits folder yourself.';
   }
   async function act(a, s) {

@@ -2,12 +2,14 @@
   "smt": {
     "name": "MiG-29SMT",
     "instruments_dll": "MiG29SMTInstruments.dll",
+    "packs": [{"name": "MiG-29 Pack", "dll": "MiG29Pack.dll"}],
     "pages": ["pfd", "eng", "sms", "stby", "ufc", "tac"],
     "builtin_screens": ["pfd", "eng", "sms", "stby", "ufc"]
   },
   "mig29": {
     "name": "MiG-29 (9.12)",
     "instruments_dll": "MiG29Instruments.dll",
+    "packs": [{"name": "MiG-29 Pack", "dll": "MiG29Pack.dll"}],
     "pages": ["tac"],
     "builtin_screens": []
   }

@@ -4,7 +4,8 @@
 
 - Any recent desktop Linux (Ubuntu, Mint, Pop!_OS, Debian, Fedora, Arch, SteamOS desktop mode…)
 - **Python 3.8 or newer**: almost always installed already (`python3 --version` to check).
-- **Nuclear Option** through Steam (Proton) with the **MiG-29SMT** mod installed (a version with cockpit setup support).
+- **Nuclear Option** through Steam (Proton) with the **MiG-29SMT** mod or the **MiG-29 Pack** installed (a version with
+  cockpit setup support).
 - An internet connection the first time (the editor downloads numpy and Pillow once, and its 3D library when the page loads).
 
 ## Install

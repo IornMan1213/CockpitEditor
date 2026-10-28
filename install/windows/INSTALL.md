@@ -5,7 +5,8 @@
 - **Windows 10 or 11**
 - **Python 3.8 or newer**: download it from <https://www.python.org/downloads/>. In the installer, tick
   **Add python.exe to PATH** before pressing *Install Now*.
-- **Nuclear Option** with the **MiG-29SMT** mod installed (a version with cockpit setup support), through NOMM or by hand.
+- **Nuclear Option** with the **MiG-29SMT** mod or the **MiG-29 Pack** installed (a version with cockpit setup support), through
+  NOMM or by hand.
 - An internet connection the first time (the editor downloads numpy and Pillow once, and its 3D library when the page loads).
 
 ## Install

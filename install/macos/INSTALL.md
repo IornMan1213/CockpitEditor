@@ -34,8 +34,8 @@ cd /path/to/CockpitEditor && chmod +x "Cockpit Editor.command" && xattr -dr com.
 1. Make your changes and press **Cmd+S** or **Ctrl+S**.
 2. Press **Setups**, type a name and press **Export .cpit**. The list shows it; the download button saves the file.
 3. On the PC with the game, put the .cpit file in the **Cockpits** folder next to the MiG-29SMT plugin
-   (`BepInEx/plugins/.../MiG-29SMT/Cockpits`), then pick it in the game: **F1** (Configuration Manager) > the MiG-29SMT
-   instruments plugin > **Cockpit layout**.
+   (`BepInEx/plugins/.../MiG-29SMT/Cockpits`), or the MiG-29 Pack's (`BepInEx/plugins/.../MiG-29_Pack/Cockpits`), then pick
+   it in the game: **F1** (Configuration Manager) > the MiG-29SMT instruments plugin (or MiG-29 Pack) > **Cockpit layout**.
 
 If you run the game on this Mac, type its folder (the one with `NuclearOption.exe`) under **Setups > Game folder** and press
 **Set**; the editor then puts setups straight into the game.

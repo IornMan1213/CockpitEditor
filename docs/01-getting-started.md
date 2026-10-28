@@ -5,7 +5,8 @@
 - Windows, Linux or macOS, with **Python 3.8 or newer**. The first start installs numpy and Pillow for the editor by itself.
 - A web browser (Chrome, Edge, Firefox or Safari). The editor runs in your browser but everything stays on your PC.
 - An internet connection the first time the page loads (it fetches the 3D library, three.js, from unpkg.com).
-- To use your cockpit in the game: Nuclear Option with the jet's mod installed (a version made for the cockpit editor).
+- To use your cockpit in the game: Nuclear Option with the jet's mod or the MiG-29 Pack installed (a version made for the
+  cockpit editor).
 
 ## Start the editor
 
